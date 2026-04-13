@@ -21,8 +21,8 @@
 const CFG = {
   jackdaw: {
     baseUrl:      'https://api.jackdaw.online',
-    clientId:     window.JACKDAW_CLIENT_ID     || 'YOUR_CLIENT_ID',
-    clientSecret: window.JACKDAW_CLIENT_SECRET || 'YOUR_CLIENT_SECRET',
+    clientId:     window.JACKDAW_CLIENT_ID     || 'ECuAb7Lqa3CO4VvOqS6dqmRXUB1OKfKyItPZpB93',
+    clientSecret: window.JACKDAW_CLIENT_SECRET || '0umAYgVipY8CGr9BC4IF8umicqj4oaeOOuxGRFVUpI2m1IvhXOLqprkFY2zzYEBJBcNdZaxVYYWbdNZhIxw634UEpOrZEeVfutC6ZWzBrAlLv5Ru3FerjG54u5USinwR',
   },
   mcp: {
     serverUrl: 'https://lichtwiese-mcp.onrender.com/sse',
