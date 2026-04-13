@@ -98,17 +98,17 @@ app.get('/api/health', (req, res) => {
 // This server calls JackDaw with the real credentials from env vars.
 // Only the access_token is returned to the browser — never the credentials.
 // ═════════════════════════════════════════════════════════════════════════════
-app.post('/api/token', async (req, res) => {
+// Ensure 'async' is present right here:
+app.post('/api/token', async (req, res) => { 
   if (!CLIENT_ID || !CLIENT_SECRET) {
     return res.status(503).json({ error: 'proxy_not_configured' });
   }
 
-  // Polirural OIDC requires Basic Auth Header: Base64(id:secret)
   const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
 
   const formBody = new URLSearchParams({
     grant_type: 'client_credentials',
-    client_id: CLIENT_ID, 
+    client_id: CLIENT_ID,
     client_secret: CLIENT_SECRET
   }).toString();
 
@@ -125,6 +125,7 @@ app.post('/api/token', async (req, res) => {
     `${JACKDAW_BASE}/auth/token`
   ];
 
+  // This loop contains an 'await', so it MUST be inside an 'async' function
   for (const endpoint of candidates) {
     console.log(`[token] Trying ${endpoint}`);
     try {
