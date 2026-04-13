@@ -66,7 +66,6 @@ const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/
 });
 
 streetLayer.addTo(map);
-
 map.zoomControl.setPosition('bottomright');
 
 const drawnItems = new L.FeatureGroup();
@@ -95,9 +94,9 @@ const drawControl = new L.Control.Draw({
         weight: 2,
       },
     },
-    polyline:     false,
-    circle:       false,
-    marker:       false,
+    polyline: false,
+    circle: false,
+    marker: false,
     circlemarker: false,
   },
   edit: {
@@ -176,14 +175,14 @@ $('btnLayerStreet').addEventListener('click', () => {
 
 function showFieldStats(layer) {
   const stats = $('fieldStats');
-  const geo   = layer.toGeoJSON();
-  const ll    = layer.getLatLngs ? layer.getLatLngs()[0] : [];
+  const geo = layer.toGeoJSON();
+  const ll = layer.getLatLngs ? layer.getLatLngs()[0] : [];
 
-  const areaM2  = L.GeometryUtil ? L.GeometryUtil.geodesicArea(ll) : approxArea(ll);
-  const areaHa  = (areaM2 / 10000).toFixed(2);
+  const areaM2 = L.GeometryUtil ? L.GeometryUtil.geodesicArea(ll) : approxArea(ll);
+  const areaHa = (areaM2 / 10000).toFixed(2);
 
-  const bounds   = layer.getBounds();
-  const center   = bounds.getCenter();
+  const bounds = layer.getBounds();
+  const center = bounds.getCenter();
   const centroid = `${center.lat.toFixed(4)}°N ${center.lng.toFixed(4)}°E`;
 
   let perimM = 0;
@@ -196,16 +195,16 @@ function showFieldStats(layer) {
     ? geo.geometry.coordinates[0].length - 1
     : 4;
 
-  $('statArea').textContent    = `${areaHa} ha`;
+  $('statArea').textContent = `${areaHa} ha`;
   $('statCentroid').textContent = centroid;
-  $('statPerim').textContent   = `${perimKm} km`;
-  $('statPoints').textContent  = `${pts}`;
+  $('statPerim').textContent = `${perimKm} km`;
+  $('statPoints').textContent = `${pts}`;
 
   stats.classList.add('visible');
 
   $('navPolygonInfo').style.display = 'flex';
-  $('navArea').textContent    = `${areaHa} ha`;
-  $('navCoords').textContent  = centroid;
+  $('navArea').textContent = `${areaHa} ha`;
+  $('navCoords').textContent = centroid;
 }
 
 function hideFieldStats() {
@@ -233,7 +232,7 @@ function setMapHint(text) {
 async function loadDemo() {
   clearDrawing();
   try {
-    const res  = await fetch('lichtwiese.geojson');
+    const res = await fetch('lichtwiese.geojson');
     const data = await res.json();
 
     const gl = L.geoJSON(data, {
@@ -262,7 +261,6 @@ async function loadDemo() {
     if (landB) {
       S.polygon = JSON.stringify(landB.geometry);
       const fakeLayer = L.geoJSON(landB);
-      const ll = fakeLayer.getLayers()[0].getLatLngs()[0];
       showFieldStats(fakeLayer.getLayers()[0]);
     }
 
@@ -280,24 +278,22 @@ async function loadDemo() {
 
 function clearDrawing() {
   drawnItems.clearLayers();
-  S.polygon     = null;
-  S.drawnLayer  = null;
+  S.polygon = null;
+  S.drawnLayer = null;
   hideFieldStats();
 }
 
 async function fetchToken() {
   try {
     console.log('[Auth] Requesting token from proxy:', CFG.proxy.tokenUrl);
-
     const res = await fetch(CFG.proxy.tokenUrl, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       console.error('[Auth] Proxy token error:', res.status, err);
-
       if (res.status === 503) {
         console.error('[Auth] Proxy not configured — set JACKDAW_CLIENT_ID and JACKDAW_CLIENT_SECRET in Render env vars');
       } else if (res.status === 502) {
@@ -307,7 +303,6 @@ async function fetchToken() {
     }
 
     const data = await res.json();
-
     if (!data.access_token) {
       console.error('[Auth] Proxy returned no access_token:', data);
       return false;
@@ -316,10 +311,8 @@ async function fetchToken() {
     S.token = data.access_token;
     console.log('[Auth] Token acquired ✓');
     return true;
-
   } catch (err) {
     console.error('[Auth] Could not reach token proxy:', err.message);
-    console.error('[Auth] Is the proxy deployed? Check CFG.proxy.tokenUrl:', CFG.proxy.tokenUrl);
     return false;
   }
 }
@@ -330,12 +323,12 @@ async function connectMCP() {
     const res = await fetch(`${CFG.jackdaw.baseUrl}/mcp/connect`, {
       method: 'POST',
       headers: {
-        'Content-Type':  'application/json',
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${S.token}`,
       },
       body: JSON.stringify({
         server_url: CFG.mcp.serverUrl,
-        name:       CFG.mcp.name,
+        name: CFG.mcp.name,
       }),
     });
     if (!res.ok) return false;
@@ -354,19 +347,24 @@ function geojsonToWKT(geometry) {
   
   if (geom.type === 'Polygon') {
     const ring = geom.coordinates[0];
-    const first = ring[0];
-    const last = ring[ring.length - 1];
-    const isClosed = first[0] === last[0] && first[1] === last[1];
     
-    let points;
-    if (!isClosed) {
-      points = ring.concat([first]).map(c => c.join(' ')).join(', ');
-    } else {
-      points = ring.map(c => c.join(' ')).join(', ');
+    // Ensure longitude, latitude order (WKT standard)
+    const points = ring.map(coord => {
+      const lng = coord[0];
+      const lat = coord[1];
+      return `${lng} ${lat}`;
+    });
+    
+    // Close the ring if not already closed
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (first !== last) {
+      points.push(first);
     }
     
-    const wkt = `POLYGON((${points}))`;
-    console.log('[WKT] Generated:', wkt);
+    const wkt = `POLYGON((${points.join(', ')}))`;
+    console.log('[WKT] First point (lng lat):', points[0]);
+    console.log('[WKT] Full WKT:', wkt);
     return wkt;
   }
   return null;
@@ -389,14 +387,15 @@ async function sendToJackDaw(userText) {
   if (S.polygon) {
     const wkt = geojsonToWKT(S.polygon);
     if (wkt) {
-      // Put wkt and srid directly at root level, not nested
-      payload.wkt = wkt;
-      payload.srid = 4326;
+      // JackDaw expects a "geometry" object containing wkt and srid
+      payload.geometry = {
+        wkt: wkt,
+        srid: 4326
+      };
     }
   }
 
   console.log('[Chat] Payload:', JSON.stringify(payload, null, 2));
-
 
   try {
     const res = await fetch(CFG.proxy.chatUrl, {
@@ -421,7 +420,6 @@ async function sendToJackDaw(userText) {
 
     S.history.push({ role: 'assistant', content: reply });
     return reply;
-
   } catch (err) {
     console.error('[Chat] Proxy error:', err);
     return `⚠️ Could not reach analysis service.\n\nError: ${err.message}`;
@@ -430,7 +428,7 @@ async function sendToJackDaw(userText) {
 
 function appendMessage(role, content, isLoading = false) {
   const feed = $('messages');
-  const div  = document.createElement('div');
+  const div = document.createElement('div');
   div.className = `message message--${role}`;
   if (isLoading) div.id = 'typingMsg';
 
@@ -477,7 +475,7 @@ function renderMarkdown(text) {
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/^### (.+)$/gm, '<strong style="font-size:0.95em">$1</strong>')
-    .replace(/^## (.+)$/gm,  '<strong>$1</strong>')
+    .replace(/^## (.+)$/gm, '<strong>$1</strong>')
     .replace(/^[•\-\*] (.+)$/gm, '<span style="display:block;padding-left:12px;margin:2px 0">· $1</span>')
     .replace(/^\d+\. (.+)$/gm, '<span style="display:block;padding-left:12px;margin:2px 0">$1</span>')
     .replace(/\n\n+/g, '</p><p>')
@@ -486,7 +484,7 @@ function renderMarkdown(text) {
 }
 
 async function handleSend() {
-  const input   = $('chatInput');
+  const input = $('chatInput');
   const userText = input.value.trim();
   if (!userText || S.isBusy) return;
 
@@ -520,9 +518,9 @@ async function handleSend() {
 }
 
 function updateSendBtn() {
-  const btn     = $('sendBtn');
+  const btn = $('sendBtn');
   const hasText = $('chatInput').value.trim().length > 0;
-  btn.disabled  = !hasText || S.isBusy;
+  btn.disabled = !hasText || S.isBusy;
 }
 
 function showChatBadge() {
@@ -550,8 +548,7 @@ $('btnClearChat').addEventListener('click', () => {
   while (feed.children.length > 1) feed.removeChild(feed.lastChild);
   S.history = [];
   S.unreadCount = 0;
-  const badge = $('chatBadge');
-  badge.hidden = true;
+  $('chatBadge').hidden = true;
 });
 
 function autoResizeTextarea(el) {
@@ -589,7 +586,7 @@ function switchPanel(panel) {
   }
 }
 
-$('tabMap').addEventListener('click',  () => switchPanel('map'));
+$('tabMap').addEventListener('click', () => switchPanel('map'));
 $('tabChat').addEventListener('click', () => switchPanel('chat'));
 
 if (isMobile()) Q('.workspace').setAttribute('data-view', 'map');
