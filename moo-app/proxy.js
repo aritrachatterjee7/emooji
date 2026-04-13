@@ -1,10 +1,5 @@
 'use strict';
 
-/**
- * eMooJI Token Proxy + PWA Static Server
- * Final Consolidated Version - 100% Clean
- */
-
 const express = require('express');
 const path    = require('path');
 const https   = require('https');
@@ -14,7 +9,7 @@ const { URL } = require('url');
 const app  = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
-// ── Read credentials ──────────────────────────────────────────────────────────
+// ── Read credentials from Render Env Vars ─────────────────────────────────────
 const CLIENT_ID     = process.env.JACKDAW_CLIENT_ID;
 const CLIENT_SECRET = process.env.JACKDAW_CLIENT_SECRET;
 const JACKDAW_BASE  = (process.env.JACKDAW_BASE_URL || 'https://api.jackdaw.online')
@@ -25,7 +20,6 @@ const JACKDAW_BASE  = (process.env.JACKDAW_BASE_URL || 'https://api.jackdaw.onli
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// CORS headers
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -34,30 +28,23 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Health Check ──────────────────────────────────────────────────────────────
+// ── Health Check (To verify the server is actually ALIVE) ─────────────────────
 app.get('/api/health', (req, res) => {
   res.json({
     status:   'ok',
-    service:  'emoo-ji-proxy',
     credsSet: !!(CLIENT_ID && CLIENT_SECRET),
-    jackdawBase: JACKDAW_BASE,
     timestamp: new Date().toISOString(),
   });
 });
 
-// ── POST /api/token Handler ───────────────────────────────────────────────────
+// ── The Auth Bridge ───────────────────────────────────────────────────────────
 app.post('/api/token', async (req, res) => { 
   if (!CLIENT_ID || !CLIENT_SECRET) {
-    return res.status(503).json({ 
-      error: 'proxy_not_configured',
-      detail: 'Missing JACKDAW_CLIENT_ID or JACKDAW_CLIENT_SECRET in Render env vars.'
-    });
+    return res.status(503).json({ error: 'proxy_not_configured' });
   }
 
-  // 1. Basic Auth Header
+  // Polirural/Django requires Basic Auth Header
   const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
-
-  // 2. Form Body
   const formBody = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: CLIENT_ID,
@@ -93,15 +80,11 @@ app.post('/api/token', async (req, res) => {
           expires_in:   data.expires_in || 3600,
         });
       }
-      
-      console.warn(`[token] ${result.status} from ${endpoint}`);
-      lastError = { endpoint, status: result.status, body: result.body.slice(0, 200) };
+      lastError = { endpoint, status: result.status, body: result.body.slice(0, 100) };
     } catch (err) {
-      console.warn(`[token] Error at ${endpoint}:`, err.message);
       lastError = { endpoint, status: 0, body: err.message };
     }
   }
-
   res.status(502).json({ error: 'token_fetch_failed', lastError });
 });
 
@@ -121,21 +104,18 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+// ── Helper Function ───────────────────────────────────────────────────────────
 function httpsPost(urlStr, body, headers) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(urlStr);
     const lib = parsed.protocol === 'https:' ? https : http;
-    
-    const options = {
+    const req = lib.request({
       hostname: parsed.hostname,
       port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path: parsed.pathname + (parsed.search || ''),
       method: 'POST',
       headers,
-    };
-
-    const req = lib.request(options, incoming => {
+    }, incoming => {
       let data = '';
       incoming.on('data', chunk => { data += chunk; });
       incoming.on('end', () => resolve({
@@ -144,14 +124,12 @@ function httpsPost(urlStr, body, headers) {
         body: data,
       }));
     });
-
     req.on('error', reject);
     req.write(body);
     req.end();
   });
 }
 
-// ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n✅ Proxy started on port ${PORT}`);
 });
