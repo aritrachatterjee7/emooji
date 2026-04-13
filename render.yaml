@@ -1,0 +1,80 @@
+# render.yaml — eMooJI / MooFind deployment configuration
+#
+# Place this file at the ROOT of your repo: moofind/render.yaml
+#
+# This configures TWO services on Render:
+#
+#   1. emoo-ji-app   — Node.js proxy server + PWA static files
+#                      Lives in moo-app/
+#                      Exposes: POST /api/token, GET /api/health, GET /* (PWA)
+#
+#   2. emoo-ji-mcp   — Python MCP server (your existing server)
+#                      Lives in moo-mcp/
+#                      Exposes: /sse (JackDaw connects here)
+#
+# HOW TO USE:
+#   1. Commit this file to the root of your GitHub repo
+#   2. In Render dashboard → New → Blueprint
+#   3. Connect your repo — Render reads this file automatically
+#   4. Add the secret env vars manually in the dashboard after creation
+#      (they are marked sync: false below for security)
+
+services:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # SERVICE 1 — PWA + Token Proxy (Node.js)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - type: web
+    name: emoo-ji-app
+    runtime: node
+    rootDir: moo-app
+    buildCommand: npm install
+    startCommand: node proxy.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # ── JackDaw credentials ──────────────────────────────────────────────
+      # DO NOT put real values here — add them manually in the Render dashboard
+      # after the service is created (Dashboard → emoo-ji-app → Environment)
+      - key: JACKDAW_CLIENT_ID
+        sync: false     # ← Render will prompt you to enter this manually
+
+      - key: JACKDAW_CLIENT_SECRET
+        sync: false     # ← Render will prompt you to enter this manually
+
+      # ── Optional overrides ───────────────────────────────────────────────
+      # Uncomment and set if JackDaw moves their API to a different URL
+      # - key: JACKDAW_BASE_URL
+      #   value: https://api.jackdaw.online
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # SERVICE 2 — MCP Server (Python / Docker)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - type: web
+    name: emoo-ji-mcp
+    runtime: docker
+    rootDir: moo-mcp
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+
+    envVars:
+      # ── Copernicus Sentinel-2 credentials ───────────────────────────────
+      # Get these free at: https://dataspace.copernicus.eu
+      # User Settings → OAuth Clients → Create New Client
+      - key: COPERNICUS_CLIENT_ID
+        sync: false     # ← enter manually in Render dashboard
+
+      - key: COPERNICUS_CLIENT_SECRET
+        sync: false     # ← enter manually in Render dashboard
+
+      # ── Phase 2 — PostGIS database ───────────────────────────────────────
+      # Leave blank for Phase 1. Render auto-fills this when you attach
+      # a PostgreSQL database to this service in Phase 2.
+      # - key: DATABASE_URL
+      #   fromDatabase:
+      #     name: emoo-ji-db
+      #     property: connectionString

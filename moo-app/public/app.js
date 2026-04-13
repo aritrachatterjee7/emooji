@@ -20,9 +20,17 @@
 /* ── Configuration ─────────────────────────────────────────────────────────── */
 const CFG = {
   jackdaw: {
-    baseUrl:      'https://api.jackdaw.online',
-    clientId:     window.JACKDAW_CLIENT_ID     || 'ECuAb7Lqa3CO4VvOqS6dqmRXUB1OKfKyItPZpB93',
-    clientSecret: window.JACKDAW_CLIENT_SECRET || '0umAYgVipY8CGr9BC4IF8umicqj4oaeOOuxGRFVUpI2m1IvhXOLqprkFY2zzYEBJBcNdZaxVYYWbdNZhIxw634UEpOrZEeVfutC6ZWzBrAlLv5Ru3FerjG54u5USinwR',
+    // Direct JackDaw API — used for /mcp/connect and /chat_v2 with the bearer
+    // token obtained via the proxy. Credentials are NEVER in this file.
+    baseUrl: 'https://api.jackdaw.online',
+  },
+  proxy: {
+    // Your Render proxy URL — same origin as the PWA if you use the combined deploy,
+    // or the separate Render service URL if you deploy proxy standalone.
+    // Change this to match your actual Render service URL.
+    tokenUrl: '/api/token',   // same-origin proxy endpoint (preferred)
+    // If your proxy is on a different subdomain, use the full URL instead:
+    // tokenUrl: 'https://emoo-ji-proxy.onrender.com/api/token',
   },
   mcp: {
     serverUrl: 'https://lichtwiese-mcp.onrender.com/sse',
@@ -327,81 +335,60 @@ function clearDrawing() {
    JACKDAW API
 ══════════════════════════════════════════════════════════════════════════════ */
 /**
- * fetchToken — obtain a JackDaw OAuth2 bearer token.
+ * fetchToken — obtain a JackDaw bearer token via the server-side proxy.
  *
- * Bug-fix notes:
- *   1. 405 Method Not Allowed: the trailing-slash variant /auth/token/ only
- *      accepts GET. The correct OAuth2 token endpoint is POST /token (root)
- *      or POST /auth/token (no trailing slash). We try /token first, then
- *      fall back to /auth/token so we survive any routing change on their end.
- *   2. Mixed-content redirect: the API was 301-redirecting the HTTPS fetch to
- *      http://, which Render's CSP blocks. We set redirect:'error' so we catch
- *      the redirect immediately instead of following it into a blocked URL.
- *      If the primary endpoint redirects we retry against the alternate path.
- *   3. Always ensure the base URL is https:// before constructing fetch URLs.
+ * WHY A PROXY?
+ * The proxy (proxy.js on Render) holds JACKDAW_CLIENT_ID and
+ * JACKDAW_CLIENT_SECRET as server-side environment variables.
+ * The browser calls POST /api/token (same origin), the proxy calls
+ * JackDaw with the real credentials, and returns only the bearer token.
+ * Credentials are never exposed in browser JavaScript or network logs.
+ *
+ * The proxy also handles:
+ *   - Trying multiple JackDaw token endpoint candidates
+ *   - Enforcing HTTPS / blocking mixed-content redirects
+ *   - Returning a clean { access_token, token_type, expires_in } response
  */
 async function fetchToken() {
-  // Guarantee HTTPS — never follow a downgrade
-  const base = CFG.jackdaw.baseUrl.replace(/^http:\/\//, 'https://').replace(/\/$/, '');
+  try {
+    console.log('[Auth] Requesting token from proxy:', CFG.proxy.tokenUrl);
 
-  const body = new URLSearchParams({
-    grant_type:    'client_credentials',
-    client_id:     CFG.jackdaw.clientId,
-    client_secret: CFG.jackdaw.clientSecret,
-  });
+    const res = await fetch(CFG.proxy.tokenUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // No body needed — proxy uses its own server-side credentials
+    });
 
-  const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      console.error('[Auth] Proxy token error:', res.status, err);
 
-  // Candidate endpoints in priority order (POST only, no trailing slash)
-  const candidates = [
-    `${base}/token`,
-    `${base}/auth/token`,
-    `${base}/oauth/token`,
-    `${base}/api/token`,
-  ];
-
-  for (const url of candidates) {
-    try {
-      console.log(`[JackDaw] Trying token endpoint: ${url}`);
-      const res = await fetch(url, {
-        method:   'POST',
-        headers,
-        body,
-        redirect: 'error',   // never follow redirects — catches http downgrade immediately
-      });
-
-      if (res.status === 405) {
-        // This path only allows GET — not our endpoint, skip
-        console.warn(`[JackDaw] 405 on ${url} — skipping`);
-        continue;
+      // Specific actionable messages based on status
+      if (res.status === 503) {
+        console.error('[Auth] Proxy not configured — set JACKDAW_CLIENT_ID and JACKDAW_CLIENT_SECRET in Render env vars');
+      } else if (res.status === 502) {
+        console.error('[Auth] Proxy could not reach JackDaw — check JackDaw API status');
       }
-
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        console.warn(`[JackDaw] ${res.status} on ${url}: ${txt.slice(0, 120)}`);
-        continue;
-      }
-
-      const data = await res.json();
-
-      if (!data.access_token) {
-        console.warn(`[JackDaw] No access_token in response from ${url}:`, data);
-        continue;
-      }
-
-      S.token = data.access_token;
-      console.log(`[JackDaw] Token acquired from ${url}`);
-      return true;
-
-    } catch (err) {
-      // TypeError: Failed to fetch  →  redirect blocked, CORS, or network error
-      console.warn(`[JackDaw] fetch error on ${url}:`, err.message);
-      // continue to next candidate
+      return false;
     }
-  }
 
-  console.error('[JackDaw] All token endpoints failed');
-  return false;
+    const data = await res.json();
+
+    if (!data.access_token) {
+      console.error('[Auth] Proxy returned no access_token:', data);
+      return false;
+    }
+
+    S.token = data.access_token;
+    console.log('[Auth] Token acquired ✓');
+    return true;
+
+  } catch (err) {
+    // Network error reaching the proxy itself
+    console.error('[Auth] Could not reach token proxy:', err.message);
+    console.error('[Auth] Is the proxy deployed? Check CFG.proxy.tokenUrl:', CFG.proxy.tokenUrl);
+    return false;
+  }
 }
 
 async function connectMCP() {
@@ -429,10 +416,17 @@ async function connectMCP() {
 }
 
 async function sendToJackDaw(userText) {
-  // Ensure token
+  // Ensure token — re-fetch if expired or not yet acquired
   if (!S.token) {
     const ok = await fetchToken();
-    if (!ok) return 'Authentication failed. Please refresh the page and try again.';
+    if (!ok) return (
+      '⚠️ **Could not connect to JackDaw.**\n\n' +
+      'This usually means one of:\n' +
+      '- The proxy server is not running (check your Render service)\n' +
+      '- `JACKDAW_CLIENT_ID` or `JACKDAW_CLIENT_SECRET` are not set in Render env vars\n\n' +
+      'Your map and drawing tools still work. To fix auth: check the Render dashboard, ' +
+      'then refresh this page.'
+    );
   }
 
   // Build system context
