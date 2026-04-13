@@ -389,14 +389,14 @@ async function sendToJackDaw(userText) {
   if (S.polygon) {
     const wkt = geojsonToWKT(S.polygon);
     if (wkt) {
-      payload.geometry = {
-        wkt: wkt,
-        srid: 4326
-      };
+      // Put wkt and srid directly at root level, not nested
+      payload.wkt = wkt;
+      payload.srid = 4326;
     }
   }
 
   console.log('[Chat] Payload:', JSON.stringify(payload, null, 2));
+
 
   try {
     const res = await fetch(CFG.proxy.chatUrl, {
