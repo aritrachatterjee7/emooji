@@ -443,7 +443,8 @@ async function sendToJackDaw(userText) {
   if (S.sessionId) payload.session_id = S.sessionId;
 
   try {
-    const res = await fetch(`${CFG.jackdaw.baseUrl}/chat_v2`, {
+    // Change this line:
+const res = await fetch(`${CFG.jackdaw.baseUrl}/chat/v2/chat`, { // Added /v2/chat {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',

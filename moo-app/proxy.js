@@ -99,33 +99,45 @@ app.get('/api/health', (req, res) => {
 // Only the access_token is returned to the browser — never the credentials.
 // ═════════════════════════════════════════════════════════════════════════════
 app.post('/api/token', async (req, res) => {
-  if (!CLIENT_ID || !CLIENT_SECRET) {
-    return res.status(503).json({ error: 'proxy_not_configured' });
-  }
+  if (!CLIENT_ID || !CLIENT_SECRET) return res.status(503).json({ error: 'proxy_not_configured' });
 
-  // 1. Prepare the Basic Auth header (Base64 encoding id:secret)
+  // Polirural OIDC requires Basic Auth Header: Base64(id:secret)
   const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
 
-  // 2. Prepare the Form Body
   const formBody = new URLSearchParams({
     grant_type: 'client_credentials',
-    // We send them in the body TOO, just in case
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
+    client_id: CLIENT_ID, // Some servers want it in both places
+    client_secret: CLIENT_SECRET
   }).toString();
 
   const headers = {
-    'Authorization':  authHeader, // <--- THIS IS THE MISSING PIECE
+    'Authorization':  authHeader, // <--- CRITICAL
     'Content-Type':   'application/x-www-form-urlencoded',
     'Content-Length': Buffer.byteLength(formBody),
     'Accept':         'application/json',
   };
 
   const candidates = [
-    'https://www.poliruralplus.eu/o/token/', // Identity Provider
+    'https://www.poliruralplus.eu/o/token/', // The official OIDC endpoint
     `${JACKDAW_BASE}/token`,
-    `${JACKDAW_BASE}/auth/token`,
+    `${JACKDAW_BASE}/auth/token`
   ];
+
+  for (const endpoint of candidates) {
+    try {
+      const result = await httpsPost(endpoint, formBody, headers);
+      if (result.status >= 200 && result.status < 300) {
+        const data = JSON.parse(result.body);
+        console.log(`[token] ✅ Success from ${endpoint}`);
+        return res.json({ access_token: data.access_token });
+      }
+      console.warn(`[token] ${result.status} from ${endpoint}`);
+    } catch (err) {
+      console.error(`[token] Error at ${endpoint}:`, err.message);
+    }
+  }
+  res.status(502).json({ error: 'token_fetch_failed' });
+});
 
   // ... rest of your loop logic ...
   let lastError = null;
@@ -190,7 +202,7 @@ app.post('/api/token', async (req, res) => {
     detail:   'Could not obtain a token from JackDaw. Check the Render logs for which endpoint returned what.',
     lastError,
   });
-});
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Static PWA files from ./public/
