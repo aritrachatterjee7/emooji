@@ -99,43 +99,52 @@ app.get('/api/health', (req, res) => {
 // Only the access_token is returned to the browser — never the credentials.
 // ═════════════════════════════════════════════════════════════════════════════
 app.post('/api/token', async (req, res) => {
-  if (!CLIENT_ID || !CLIENT_SECRET) return res.status(503).json({ error: 'proxy_not_configured' });
+  if (!CLIENT_ID || !CLIENT_SECRET) {
+    return res.status(503).json({ error: 'proxy_not_configured' });
+  }
 
   // Polirural OIDC requires Basic Auth Header: Base64(id:secret)
   const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
 
   const formBody = new URLSearchParams({
     grant_type: 'client_credentials',
-    client_id: CLIENT_ID, // Some servers want it in both places
+    client_id: CLIENT_ID, 
     client_secret: CLIENT_SECRET
   }).toString();
 
   const headers = {
-    'Authorization':  authHeader, // <--- CRITICAL
+    'Authorization':  authHeader,
     'Content-Type':   'application/x-www-form-urlencoded',
     'Content-Length': Buffer.byteLength(formBody),
     'Accept':         'application/json',
   };
 
   const candidates = [
-    'https://www.poliruralplus.eu/o/token/', // The official OIDC endpoint
+    'https://www.poliruralplus.eu/o/token/', 
     `${JACKDAW_BASE}/token`,
     `${JACKDAW_BASE}/auth/token`
   ];
 
   for (const endpoint of candidates) {
+    console.log(`[token] Trying ${endpoint}`);
     try {
       const result = await httpsPost(endpoint, formBody, headers);
+      
       if (result.status >= 200 && result.status < 300) {
         const data = JSON.parse(result.body);
         console.log(`[token] ✅ Success from ${endpoint}`);
-        return res.json({ access_token: data.access_token });
+        return res.json({
+          access_token: data.access_token,
+          token_type:   data.token_type || 'bearer',
+          expires_in:   data.expires_in || 3600,
+        });
       }
       console.warn(`[token] ${result.status} from ${endpoint}`);
     } catch (err) {
       console.error(`[token] Error at ${endpoint}:`, err.message);
     }
   }
+
   res.status(502).json({ error: 'token_fetch_failed' });
 });
 
