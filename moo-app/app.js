@@ -1,15 +1,32 @@
+/**
+ * app.js — eMooJI Progressive Web App
+ *
+ * Features:
+ *   - PWA install prompt handling
+ *   - Service worker registration
+ *   - JackDaw OAuth2 (client_credentials) + /mcp/connect + /chat_v2
+ *   - Leaflet map with Polygon + Rectangle draw tools
+ *   - Layer switcher (dark OSM / satellite via Stadia)
+ *   - Field stats (area, centroid, perimeter, vertex count)
+ *   - Mobile panel switching (map ↔ chat)
+ *   - Animated splash screen
+ *   - Auto-grow textarea
+ *   - Markdown-ish message rendering
+ *   - Unread badge on mobile tab
+ */
+
 'use strict';
 
 /* ── Configuration ─────────────────────────────────────────────────────────── */
 const CFG = {
   jackdaw: {
-    baseUrl: 'https://api.jackdaw.online',
-    clientId: window.JACKDAW_CLIENT_ID || 'CuAb7Lqa3CO4VvOqS6dqmRXUB1OKfKyItPZpB93',
-    clientSecret: window.JACKDAW_CLIENT_SECRET || '0umAYgVipY8CGr9BC4IF8umicqj4oaeOOuxGRFVUpI2m1IvhXOLqprkFY2zzYEBJBcNdZaxVYYWbdNZhIxw634UEpOrZEeVfutC6ZWzBrAlLv5Ru3FerjG54u5USinwR',
+    baseUrl:      'https://api.jackdaw.online',
+    clientId:     window.JACKDAW_CLIENT_ID     || 'YOUR_CLIENT_ID',
+    clientSecret: window.JACKDAW_CLIENT_SECRET || 'YOUR_CLIENT_SECRET',
   },
   mcp: {
-    serverUrl: 'https://emooji.onrender.com/sse',
-    name: 'moofind-emoo-ji-mcp',
+    serverUrl: 'https://lichtwiese-mcp.onrender.com/sse',
+    name:      'moofind-emoo-ji-mcp',
   },
   map: {
     center: [49.8731, 8.6673],
@@ -19,14 +36,14 @@ const CFG = {
 
 /* ── State ──────────────────────────────────────────────────────────────────── */
 const S = {
-  token: null,
-  sessionId: null,
-  polygon: null,   // GeoJSON geometry string passed to JackDaw
-  drawnLayer: null,
-  isBusy: false,
-  history: [],
-  currentView: 'map',   // 'map' | 'chat'
-  unreadCount: 0,
+  token:        null,
+  sessionId:    null,
+  polygon:      null,   // GeoJSON geometry string passed to JackDaw
+  drawnLayer:   null,
+  isBusy:       false,
+  history:      [],
+  currentView:  'map',   // 'map' | 'chat'
+  unreadCount:  0,
   deferredInstall: null,
   currentLayer: 'street',
 };
@@ -45,9 +62,9 @@ function splashProgress(pct, label) {
 
 function hideSplash() {
   const splash = $('splash');
-  const app = $('app');
+  const app    = $('app');
   if (splash) splash.classList.add('hidden');
-  if (app) { app.removeAttribute('aria-hidden'); app.classList.add('visible'); }
+  if (app)    { app.removeAttribute('aria-hidden'); app.classList.add('visible'); }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -55,7 +72,7 @@ function hideSplash() {
 ══════════════════════════════════════════════════════════════════════════════ */
 const map = L.map('map', {
   center: CFG.map.center,
-  zoom: CFG.map.zoom,
+  zoom:   CFG.map.zoom,
   zoomControl: true,
   attributionControl: true,
 });
@@ -104,9 +121,9 @@ const drawControl = new L.Control.Draw({
         weight: 2,
       },
     },
-    polyline: false,
-    circle: false,
-    marker: false,
+    polyline:     false,
+    circle:       false,
+    marker:       false,
     circlemarker: false,
   },
   edit: {
@@ -189,16 +206,16 @@ $('btnLayerStreet').addEventListener('click', () => {
 /* ── Field stats helpers ─────────────────────────────────────────────────────── */
 function showFieldStats(layer) {
   const stats = $('fieldStats');
-  const geo = layer.toGeoJSON();
-  const ll = layer.getLatLngs ? layer.getLatLngs()[0] : [];
+  const geo   = layer.toGeoJSON();
+  const ll    = layer.getLatLngs ? layer.getLatLngs()[0] : [];
 
   // Area
-  const areaM2 = L.GeometryUtil ? L.GeometryUtil.geodesicArea(ll) : approxArea(ll);
-  const areaHa = (areaM2 / 10000).toFixed(2);
+  const areaM2  = L.GeometryUtil ? L.GeometryUtil.geodesicArea(ll) : approxArea(ll);
+  const areaHa  = (areaM2 / 10000).toFixed(2);
 
   // Centroid
-  const bounds = layer.getBounds();
-  const center = bounds.getCenter();
+  const bounds   = layer.getBounds();
+  const center   = bounds.getCenter();
   const centroid = `${center.lat.toFixed(4)}°N ${center.lng.toFixed(4)}°E`;
 
   // Perimeter (approximate, sum of edge distances)
@@ -213,17 +230,17 @@ function showFieldStats(layer) {
     ? geo.geometry.coordinates[0].length - 1
     : 4;
 
-  $('statArea').textContent = `${areaHa} ha`;
+  $('statArea').textContent    = `${areaHa} ha`;
   $('statCentroid').textContent = centroid;
-  $('statPerim').textContent = `${perimKm} km`;
-  $('statPoints').textContent = `${pts}`;
+  $('statPerim').textContent   = `${perimKm} km`;
+  $('statPoints').textContent  = `${pts}`;
 
   stats.classList.add('visible');
 
   // Update nav bar info
   $('navPolygonInfo').style.display = 'flex';
-  $('navArea').textContent = `${areaHa} ha`;
-  $('navCoords').textContent = centroid;
+  $('navArea').textContent    = `${areaHa} ha`;
+  $('navCoords').textContent  = centroid;
 }
 
 function hideFieldStats() {
@@ -252,7 +269,7 @@ function setMapHint(text) {
 async function loadDemo() {
   clearDrawing();
   try {
-    const res = await fetch('lichtwiese.geojson');
+    const res  = await fetch('lichtwiese.geojson');
     const data = await res.json();
 
     const gl = L.geoJSON(data, {
@@ -301,47 +318,90 @@ async function loadDemo() {
 
 function clearDrawing() {
   drawnItems.clearLayers();
-  S.polygon = null;
-  S.drawnLayer = null;
+  S.polygon     = null;
+  S.drawnLayer  = null;
   hideFieldStats();
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
    JACKDAW API
 ══════════════════════════════════════════════════════════════════════════════ */
+/**
+ * fetchToken — obtain a JackDaw OAuth2 bearer token.
+ *
+ * Bug-fix notes:
+ *   1. 405 Method Not Allowed: the trailing-slash variant /auth/token/ only
+ *      accepts GET. The correct OAuth2 token endpoint is POST /token (root)
+ *      or POST /auth/token (no trailing slash). We try /token first, then
+ *      fall back to /auth/token so we survive any routing change on their end.
+ *   2. Mixed-content redirect: the API was 301-redirecting the HTTPS fetch to
+ *      http://, which Render's CSP blocks. We set redirect:'error' so we catch
+ *      the redirect immediately instead of following it into a blocked URL.
+ *      If the primary endpoint redirects we retry against the alternate path.
+ *   3. Always ensure the base URL is https:// before constructing fetch URLs.
+ */
 async function fetchToken() {
-  try {
-    const params = new URLSearchParams({
-      grant_type:    'client_credentials',
-      client_id:     CFG.jackdaw.clientId,
-      client_secret: CFG.jackdaw.clientSecret,
-    });
+  // Guarantee HTTPS — never follow a downgrade
+  const base = CFG.jackdaw.baseUrl.replace(/^http:\/\//, 'https://').replace(/\/$/, '');
 
-    // We use GET and put the params in the URL
-    const url = `https://api.jackdaw.online/auth/token?${params.toString()}`;
-    
-    console.log('[JackDaw] Attempting GET Auth...');
+  const body = new URLSearchParams({
+    grant_type:    'client_credentials',
+    client_id:     CFG.jackdaw.clientId,
+    client_secret: CFG.jackdaw.clientSecret,
+  });
 
-    const res = await fetch(url, {
-      method: 'GET', // <--- Changed to GET
-      headers: { 
-        'Accept': 'application/json'
+  const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+
+  // Candidate endpoints in priority order (POST only, no trailing slash)
+  const candidates = [
+    `${base}/token`,
+    `${base}/auth/token`,
+    `${base}/oauth/token`,
+    `${base}/api/token`,
+  ];
+
+  for (const url of candidates) {
+    try {
+      console.log(`[JackDaw] Trying token endpoint: ${url}`);
+      const res = await fetch(url, {
+        method:   'POST',
+        headers,
+        body,
+        redirect: 'error',   // never follow redirects — catches http downgrade immediately
+      });
+
+      if (res.status === 405) {
+        // This path only allows GET — not our endpoint, skip
+        console.warn(`[JackDaw] 405 on ${url} — skipping`);
+        continue;
       }
-    });
 
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.warn(`[JackDaw] Auth Failed (${res.status}):`, errBody);
-      return false;
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        console.warn(`[JackDaw] ${res.status} on ${url}: ${txt.slice(0, 120)}`);
+        continue;
+      }
+
+      const data = await res.json();
+
+      if (!data.access_token) {
+        console.warn(`[JackDaw] No access_token in response from ${url}:`, data);
+        continue;
+      }
+
+      S.token = data.access_token;
+      console.log(`[JackDaw] Token acquired from ${url}`);
+      return true;
+
+    } catch (err) {
+      // TypeError: Failed to fetch  →  redirect blocked, CORS, or network error
+      console.warn(`[JackDaw] fetch error on ${url}:`, err.message);
+      // continue to next candidate
     }
-
-    const data = await res.json();
-    S.token = data.access_token;
-    return true;
-  } catch (err) {
-    console.error('[JackDaw] Fetch error:', err);
-    return false;
   }
+
+  console.error('[JackDaw] All token endpoints failed');
+  return false;
 }
 
 async function connectMCP() {
@@ -350,12 +410,12 @@ async function connectMCP() {
     const res = await fetch(`${CFG.jackdaw.baseUrl}/mcp/connect`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type':  'application/json',
         'Authorization': `Bearer ${S.token}`,
       },
       body: JSON.stringify({
         server_url: CFG.mcp.serverUrl,
-        name: CFG.mcp.name,
+        name:       CFG.mcp.name,
       }),
     });
     if (!res.ok) return false;
@@ -384,7 +444,7 @@ async function sendToJackDaw(userText) {
 
   const payload = {
     messages: S.history,
-    system: systemCtx,
+    system:   systemCtx,
   };
   if (S.sessionId) payload.session_id = S.sessionId;
 
@@ -392,7 +452,7 @@ async function sendToJackDaw(userText) {
     const res = await fetch(`${CFG.jackdaw.baseUrl}/chat_v2`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type':  'application/json',
         'Authorization': `Bearer ${S.token}`,
       },
       body: JSON.stringify(payload),
@@ -429,7 +489,7 @@ async function sendToJackDaw(userText) {
 ══════════════════════════════════════════════════════════════════════════════ */
 function appendMessage(role, content, isLoading = false) {
   const feed = $('messages');
-  const div = document.createElement('div');
+  const div  = document.createElement('div');
   div.className = `message message--${role}`;
   if (isLoading) div.id = 'typingMsg';
 
@@ -482,7 +542,7 @@ function renderMarkdown(text) {
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     // Headers
     .replace(/^### (.+)$/gm, '<strong style="font-size:0.95em">$1</strong>')
-    .replace(/^## (.+)$/gm, '<strong>$1</strong>')
+    .replace(/^## (.+)$/gm,  '<strong>$1</strong>')
     // Bullet lists
     .replace(/^[•\-\*] (.+)$/gm, '<span style="display:block;padding-left:12px;margin:2px 0">· $1</span>')
     // Numbered lists
@@ -494,7 +554,7 @@ function renderMarkdown(text) {
 }
 
 async function handleSend() {
-  const input = $('chatInput');
+  const input   = $('chatInput');
   const userText = input.value.trim();
   if (!userText || S.isBusy) return;
 
@@ -529,9 +589,9 @@ async function handleSend() {
 }
 
 function updateSendBtn() {
-  const btn = $('sendBtn');
+  const btn     = $('sendBtn');
   const hasText = $('chatInput').value.trim().length > 0;
-  btn.disabled = !hasText || S.isBusy;
+  btn.disabled  = !hasText || S.isBusy;
 }
 
 function showChatBadge() {
@@ -605,7 +665,7 @@ function switchPanel(panel) {
   }
 }
 
-$('tabMap').addEventListener('click', () => switchPanel('map'));
+$('tabMap').addEventListener('click',  () => switchPanel('map'));
 $('tabChat').addEventListener('click', () => switchPanel('chat'));
 
 // Set initial workspace view on mobile
@@ -630,13 +690,13 @@ function setConnectionStatus(state, label) {
 /* ══════════════════════════════════════════════════════════════════════════════
    PWA — Service Worker + Install Prompt
 ══════════════════════════════════════════════════════════════════════════════ */
-// if ('serviceWorker' in navigator) {
-//   window.addEventListener('load', () => {
-//     navigator.serviceWorker.register('/sw.js')
-//       .then(reg => console.log('[SW] Registered:', reg.scope))
-//       .catch(err => console.warn('[SW] Registration failed:', err));
-//   });
-// }
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('[SW] Registered:', reg.scope))
+      .catch(err => console.warn('[SW] Registration failed:', err));
+  });
+}
 
 // Capture install prompt
 window.addEventListener('beforeinstallprompt', e => {
@@ -676,55 +736,81 @@ window.addEventListener('appinstalled', () => {
   S.deferredInstall = null;
 });
 
-// Handle URL params (from manifest shortcuts)
-const urlParams = new URLSearchParams(location.search);
-if (urlParams.get('mode') === 'demo') {
-  window.addEventListener('appReady', loadDemo, { once: true });
-}
+// Handle URL params (from manifest shortcuts) — processed inside init() finally block
 
 /* ══════════════════════════════════════════════════════════════════════════════
    INITIALISATION — Animated splash sequence
+   Fail-safe: splash ALWAYS clears, even if token fetch hangs or throws.
+   A hard 8-second timeout ensures we never get stuck on the splash screen.
 ══════════════════════════════════════════════════════════════════════════════ */
 async function init() {
-  splashProgress(10, 'Loading map…');
-  await sleep(300);
+  // Hard timeout: if init takes longer than 8 s, force-clear the splash
+  const splashTimeout = setTimeout(() => {
+    console.warn('[init] Timeout — forcing splash clear');
+    hideSplash();
+    setConnectionStatus('error', 'Timeout');
+    updateSendBtn();
+  }, 8000);
 
-  splashProgress(30, 'Connecting to JackDaw…');
-  setConnectionStatus('connecting', 'Connecting');
+  try {
+    splashProgress(10, 'Loading map…');
+    await sleep(200);
 
-  const tokenOk = await fetchToken();
+    splashProgress(30, 'Connecting to JackDaw…');
+    setConnectionStatus('connecting', 'Connecting');
 
-  if (tokenOk) {
-    splashProgress(60, 'Registering tools…');
-    setConnectionStatus('connecting', 'Registering');
-    await connectMCP();
-    splashProgress(85, 'Ready.');
-    setConnectionStatus('online', 'Connected');
-  } else {
-    splashProgress(85, 'Offline mode');
-    setConnectionStatus('error', 'Auth failed');
+    // Token fetch with its own 6-second race so we never block indefinitely
+    const tokenOk = await Promise.race([
+      fetchToken(),
+      sleep(6000).then(() => { console.warn('[init] Token fetch timed out'); return false; }),
+    ]);
+
+    if (tokenOk) {
+      splashProgress(65, 'Registering tools…');
+      setConnectionStatus('connecting', 'Registering');
+
+      // MCP connect is non-critical — don't let it block or crash init
+      await Promise.race([
+        connectMCP(),
+        sleep(4000).then(() => false),
+      ]).catch(err => console.warn('[init] MCP connect non-fatal:', err.message));
+
+      splashProgress(90, 'Ready.');
+      setConnectionStatus('online', 'Connected');
+    } else {
+      splashProgress(90, 'Auth failed — map ready');
+      setConnectionStatus('error', 'Auth failed');
+      // App is still fully usable for map drawing — chat will retry on first send
+    }
+
+    await sleep(300);
+    splashProgress(100, 'Launching…');
+    await sleep(250);
+
+  } catch (err) {
+    // Should never reach here, but absolutely must not leave splash up
+    console.error('[init] Unexpected error:', err);
+    setConnectionStatus('error', 'Error');
+  } finally {
+    clearTimeout(splashTimeout);
+    hideSplash();
+    updateSendBtn();
+
+    // Handle demo shortcut from manifest
+    if (new URLSearchParams(location.search).get('mode') === 'demo') {
+      setTimeout(loadDemo, 600);
+    }
+
+    window.dispatchEvent(new CustomEvent('appReady'));
   }
-
-  await sleep(400);
-  splashProgress(100, 'Launching…');
-  await sleep(300);
-
-  hideSplash();
-  updateSendBtn();
-
-  // Handle demo shortcut
-  if (urlParams.get('mode') === 'demo') {
-    setTimeout(loadDemo, 600);
-  }
-
-  window.dispatchEvent(new CustomEvent('appReady'));
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Outer safety net — init() itself has a finally block, but just in case
 init().catch(err => {
-  console.error('Init error:', err);
-  splashProgress(100, 'Error — see console');
+  console.error('[init] Uncaught:', err);
   hideSplash();
   setConnectionStatus('error', 'Error');
+  updateSendBtn();
 });

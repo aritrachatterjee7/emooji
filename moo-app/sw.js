@@ -1,4 +1,10 @@
-const CACHE_VERSION = 'emoo-ji-v1';
+/**
+ * sw.js — eMooJI Service Worker
+ * Provides offline shell, background sync, and asset caching.
+ * Strategy: Cache-first for static assets, network-first for API calls.
+ */
+
+const CACHE_VERSION = 'emoo-ji-v2'; // bumped: fixes chrome-extension scheme crash
 const STATIC_CACHE  = `${CACHE_VERSION}-static`;
 const TILE_CACHE    = `${CACHE_VERSION}-tiles`;
 const MAX_TILE_AGE  = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -43,24 +49,38 @@ self.addEventListener('activate', event => {
 // ── Fetch: routing strategy ───────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
   const { request } = event;
+
+  // ── GUARD: only handle http/https requests ──────────────────────────────────
+  // chrome-extension://, moz-extension://, blob:, data: etc. must be ignored.
+  // Calling cache.put() on a non-http(s) URL throws a TypeError that crashes
+  // the service worker and corrupts the cache for all subsequent requests.
+  if (!request.url.startsWith('http://') && !request.url.startsWith('https://')) {
+    return; // let the browser handle it natively — do NOT call event.respondWith()
+  }
+
   const url = new URL(request.url);
 
   // Map tiles — cache-first with expiry
-  if (url.hostname.includes('tile.openstreetmap.org') || url.hostname.includes('tiles.stadiamaps.com')) {
+  if (url.hostname.includes('tile.openstreetmap.org') || url.hostname.includes('tiles.stadiamaps.com') || url.hostname.includes('arcgisonline.com')) {
     event.respondWith(tileStrategy(request));
     return;
   }
 
   // External API calls — network only (no caching, always fresh)
+  // Includes JackDaw auth, MCP server, all geospatial APIs
   if (
     url.hostname.includes('jackdaw.online') ||
     url.hostname.includes('open-meteo.com') ||
     url.hostname.includes('discomap.eea.europa.eu') ||
     url.hostname.includes('open-elevation.com') ||
     url.hostname.includes('dataspace.copernicus.eu') ||
-    url.hostname.includes('onrender.com')
+    url.hostname.includes('onrender.com') ||
+    url.hostname.includes('arcgis.com')
   ) {
-    event.respondWith(fetch(request));
+    // Pass through to network — never intercept these
+    event.respondWith(
+      fetch(request).catch(() => new Response('API unavailable offline', { status: 503 }))
+    );
     return;
   }
 
@@ -70,8 +90,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Static assets — cache-first
-  event.respondWith(cacheFirstWithNetwork(request, STATIC_CACHE));
+  // Static assets (own origin only) — cache-first
+  // Extra guard: only cache same-origin or known CDN assets, never opaque chrome-extension responses
+  if (url.protocol === 'https:' || url.protocol === 'http:') {
+    event.respondWith(cacheFirstWithNetwork(request, STATIC_CACHE));
+  }
+  // Anything else: fall through to browser default (no respondWith = passthrough)
 });
 
 async function cacheFirstWithNetwork(request, cacheName) {
@@ -79,9 +103,10 @@ async function cacheFirstWithNetwork(request, cacheName) {
   if (cached) return cached;
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    // Only cache valid http/https responses — never opaque extension/blob responses
+    if (response.ok && (request.url.startsWith('https://') || request.url.startsWith('http://'))) {
       const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
+      cache.put(request, response.clone()); // async — don't await, don't block response
     }
     return response;
   } catch {
