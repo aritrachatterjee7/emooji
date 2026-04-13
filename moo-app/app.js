@@ -311,22 +311,32 @@ function clearDrawing() {
 ══════════════════════════════════════════════════════════════════════════════ */
 async function fetchToken() {
   try {
-    // In app.js, update line 195 to use the root token endpoint:
-    const res = await fetch(`https://api.jackdaw.online/token`, { // Removed /auth and trailing slash
+    const url = `https://api.jackdaw.online/auth/token`; // Root endpoint
+    console.log('[JackDaw] Attempting login at:', url);
+
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        client_id: CFG.jackdaw.clientId,
+        grant_type:    'client_credentials',
+        client_id:     CFG.jackdaw.clientId,
         client_secret: CFG.jackdaw.clientSecret,
       }),
     });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+
+    if (!res.ok) {
+      // THIS IS THE IMPORTANT PART: Read the server's reason for failing
+      const errorText = await res.text();
+      console.warn(`[JackDaw] Auth Failed (${res.status}):`, errorText);
+      return false;
+    }
+
     const data = await res.json();
     S.token = data.access_token;
+    console.log('[JackDaw] Auth Success!');
     return true;
   } catch (err) {
-    console.error('[JackDaw] Token error:', err);
+    console.error('[JackDaw] Network/CORS Error:', err);
     return false;
   }
 }
