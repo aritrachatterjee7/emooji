@@ -119,11 +119,9 @@ app.post('/api/token', async (req, res) => {
     'Accept':         'application/json',
   };
 
-  // Try every known JackDaw token endpoint variant
-  // Server-side: no CORS restrictions, no mixed-content issues
-  // Try the specific Polirural identity server first, then JackDaw variants
+  // Replace your existing candidates array with this:
   const candidates = [
-    'https://www.poliruralplus.eu/o/token/', // <--- THE WINNER (trailing slash is vital)
+    'https://www.poliruralplus.eu/o/token/', // <--- THE REAL ENDPOINT
     `${JACKDAW_BASE}/token`,
     `${JACKDAW_BASE}/auth/token`,
   ];
