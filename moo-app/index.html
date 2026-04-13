@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="eMooJI">
+  <meta name="theme-color" content="#080c10">
+  <meta name="description" content="Draw any field in Europe. Get real satellite vegetation, weather, terrain and Natura 2000 analysis instantly.">
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <title>eMooJI — Field Intelligence</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════
+     INSTALL BANNER
+══════════════════════════════════════════════════════════════ -->
+<div class="install-banner" id="installBanner" hidden>
+  <div class="install-banner__icon">🐄</div>
+  <div class="install-banner__text">
+    <strong>Install eMooJI</strong>
+    <span>Add to home screen for offline access</span>
+  </div>
+  <button class="install-banner__btn" id="installBtn">Install</button>
+  <button class="install-banner__close" id="installDismiss" aria-label="Dismiss">✕</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SPLASH / LOADING SCREEN
+══════════════════════════════════════════════════════════════ -->
+<div class="splash" id="splash">
+  <div class="splash__core">
+    <div class="splash__rings">
+      <div class="splash__ring splash__ring--1"></div>
+      <div class="splash__ring splash__ring--2"></div>
+      <div class="splash__ring splash__ring--3"></div>
+    </div>
+    <div class="splash__logo">
+      <span class="splash__cow">🐄</span>
+    </div>
+  </div>
+  <div class="splash__wordmark">eMoo<em>JI</em></div>
+  <div class="splash__sub">Field Intelligence · JackDaw GeoAI</div>
+  <div class="splash__progress">
+    <div class="splash__bar" id="splashBar"></div>
+  </div>
+  <div class="splash__status" id="splashStatus">Initialising…</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     APP SHELL
+══════════════════════════════════════════════════════════════ -->
+<div class="app" id="app" aria-hidden="true">
+
+  <!-- ── Top nav ─────────────────────────────────────────────── -->
+  <header class="nav">
+    <div class="nav__brand">
+      <span class="nav__cow">🐄</span>
+      <span class="nav__name">eMoo<em>JI</em></span>
+    </div>
+
+    <div class="nav__center" id="navPolygonInfo" style="display:none">
+      <svg class="nav__poly-icon" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8 1L14.5 13H1.5L8 1z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <span id="navArea">— ha</span>
+      <span class="nav__divider">·</span>
+      <span id="navCoords">—</span>
+    </div>
+
+    <div class="nav__right">
+      <div class="connection-badge" id="connectionBadge">
+        <span class="connection-badge__dot"></span>
+        <span class="connection-badge__label" id="connectionLabel">Connecting</span>
+      </div>
+      <button class="nav__btn nav__btn--icon" id="btnInstall" style="display:none" title="Install app">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2v13M7 10l5 5 5-5"/><path d="M3 19h18"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Main layout ─────────────────────────────────────────── -->
+  <main class="workspace">
+
+    <!-- ╔══════════════════════════════════════╗
+         ║  MAP PANEL                           ║
+         ╚══════════════════════════════════════╝ -->
+    <section class="map-panel" id="mapPanel">
+
+      <!-- Map toolbar -->
+      <div class="maptool">
+        <div class="maptool__group">
+          <button class="maptool__btn maptool__btn--primary" id="btnDrawPolygon" title="Draw polygon field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polygon points="12 2 22 20 2 20"/>
+            </svg>
+            <span>Polygon</span>
+          </button>
+          <button class="maptool__btn" id="btnDrawRect" title="Draw rectangle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="3" y="5" width="18" height="14" rx="1"/>
+            </svg>
+            <span>Rectangle</span>
+          </button>
+        </div>
+
+        <div class="maptool__sep"></div>
+
+        <div class="maptool__group">
+          <button class="maptool__btn" id="btnDemo" title="Load Lichtwiese demo paddocks">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M8 12h8M12 8v8"/>
+            </svg>
+            <span>Demo</span>
+          </button>
+          <button class="maptool__btn maptool__btn--danger" id="btnClear" title="Clear all drawings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+            </svg>
+            <span>Clear</span>
+          </button>
+        </div>
+
+        <div class="maptool__sep"></div>
+
+        <!-- Layer toggle -->
+        <div class="maptool__group">
+          <button class="maptool__btn maptool__btn--icon" id="btnLayerSat" title="Satellite view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v4M12 18v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M2 12h4M18 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+            </svg>
+          </button>
+          <button class="maptool__btn maptool__btn--icon" id="btnLayerStreet" title="Street view" data-active="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="maptool__hint" id="mapHint">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="width:13px;height:13px;flex-shrink:0">
+            <polygon points="8 1 15 14 1 14"/>
+          </svg>
+          Draw a field to begin
+        </div>
+      </div>
+
+      <!-- The Leaflet map -->
+      <div id="map"></div>
+
+      <!-- Field stats overlay (bottom of map) -->
+      <div class="field-stats" id="fieldStats" aria-hidden="true">
+        <div class="field-stat">
+          <span class="field-stat__label">Area</span>
+          <span class="field-stat__val" id="statArea">—</span>
+        </div>
+        <div class="field-stat__sep"></div>
+        <div class="field-stat">
+          <span class="field-stat__label">Centroid</span>
+          <span class="field-stat__val" id="statCentroid">—</span>
+        </div>
+        <div class="field-stat__sep"></div>
+        <div class="field-stat">
+          <span class="field-stat__label">Perimeter</span>
+          <span class="field-stat__val" id="statPerim">—</span>
+        </div>
+        <div class="field-stat__sep"></div>
+        <div class="field-stat">
+          <span class="field-stat__label">Points</span>
+          <span class="field-stat__val" id="statPoints">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ╔══════════════════════════════════════╗
+         ║  CHAT / ANALYSIS PANEL               ║
+         ╚══════════════════════════════════════╝ -->
+    <section class="chat-panel" id="chatPanel">
+
+      <!-- Panel header -->
+      <div class="chat-header">
+        <div class="chat-header__top">
+          <h1 class="chat-header__title">Field Analysis</h1>
+          <button class="chat-header__clear" id="btnClearChat" title="Clear conversation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+            </svg>
+          </button>
+        </div>
+        <p class="chat-header__sub">Draw any field · Ask in plain language · Powered by real satellite data</p>
+      </div>
+
+      <!-- Data source badges -->
+      <div class="source-badges">
+        <span class="badge badge--green">🛰 Sentinel-2</span>
+        <span class="badge">🌤 OpenMeteo</span>
+        <span class="badge">🦋 EEA Natura</span>
+        <span class="badge">⛰ SRTM</span>
+        <span class="badge">🗺 CORINE</span>
+      </div>
+
+      <!-- Quick prompt chips -->
+      <div class="chips" id="chipsContainer">
+        <button class="chip" data-prompt="Show vegetation health and slope suitability for grazing in this field.">🌿 Veg health + slope</button>
+        <button class="chip" data-prompt="Which pastures are most vulnerable to heat stress this week?">🌡 Heat stress</button>
+        <button class="chip" data-prompt="Find areas with highest erosion risk after last week's rainfall.">⛰ Erosion risk</button>
+        <button class="chip" data-prompt="Which parcels overlap with Natura 2000 zones?">🦋 Natura 2000</button>
+        <button class="chip" data-prompt="How has pasture productivity changed over the past two seasons?">📈 NDVI trend</button>
+        <button class="chip" data-prompt="Which parts of the farm are most suitable for moving the herd tomorrow?">🐄 Herd move</button>
+        <button class="chip" data-prompt="What is the current vegetation health (NDVI) for this area?">🛰 NDVI now</button>
+        <button class="chip" data-prompt="What type of land cover is this area classified as?">🗺 Land cover</button>
+        <button class="chip" data-prompt="Give me a complete terrain analysis — elevation, slope and grazing suitability.">📐 Terrain</button>
+      </div>
+
+      <!-- Messages feed -->
+      <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Analysis conversation">
+        <div class="message message--assistant message--welcome" data-animate>
+          <div class="message__avatar">🐄</div>
+          <div class="message__body">
+            <div class="message__bubble">
+              <p><strong>Welcome to eMooJI.</strong> I connect to real satellite and environmental databases to answer questions about any agricultural field in Europe.</p>
+              <p>No account or farm data needed — just draw and ask.</p>
+              <div class="welcome-steps">
+                <div class="welcome-step">
+                  <span class="welcome-step__num">1</span>
+                  <span>Click <strong>Polygon</strong> or <strong>Rectangle</strong> and draw over any field on the map</span>
+                </div>
+                <div class="welcome-step">
+                  <span class="welcome-step__num">2</span>
+                  <span>Or click <strong>Demo</strong> to load the Lichtwiese paddocks</span>
+                </div>
+                <div class="welcome-step">
+                  <span class="welcome-step__num">3</span>
+                  <span>Ask any question — or tap a quick-analysis chip above</span>
+                </div>
+              </div>
+            </div>
+            <span class="message__time">now</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input area -->
+      <div class="input-area">
+        <div class="input-area__field">
+          <textarea
+            id="chatInput"
+            class="input-area__textarea"
+            placeholder="Ask about this field… e.g. 'Is this safe to graze tomorrow?'"
+            rows="1"
+            aria-label="Ask a question about your field"
+          ></textarea>
+          <button class="input-area__send" id="sendBtn" disabled aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+        <p class="input-area__footer">
+          <a href="https://jackdaw.online" target="_blank" rel="noopener">JackDaw GeoAI</a> ·
+          <a href="https://polirural.eu" target="_blank" rel="noopener">PoliRuralPlus</a> ·
+          <a href="https://dataspace.copernicus.eu" target="_blank" rel="noopener">Copernicus</a>
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ── Mobile bottom nav ────────────────────────────────────── -->
+  <nav class="bottom-nav" id="bottomNav" aria-label="Switch panels">
+    <button class="bottom-nav__btn bottom-nav__btn--active" data-panel="map" id="tabMap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+        <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+      </svg>
+      <span>Map</span>
+    </button>
+    <button class="bottom-nav__btn" data-panel="chat" id="tabChat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+      </svg>
+      <span>Analysis</span>
+      <span class="bottom-nav__badge" id="chatBadge" hidden>1</span>
+    </button>
+  </nav>
+
+</div><!-- /app -->
+
+<!-- Leaflet + Draw -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
