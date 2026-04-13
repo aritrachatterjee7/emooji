@@ -37,13 +37,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ── The Auth Bridge ───────────────────────────────────────────────────────────
-app.post('/api/token', async (req, res) => { 
+// ── Helper: Fetch OAuth2 token (used by both /token and /chat endpoints) ─────
+async function fetchAccessToken() {
   if (!CLIENT_ID || !CLIENT_SECRET) {
-    return res.status(503).json({ error: 'proxy_not_configured' });
+    throw new Error('Missing CLIENT_ID or CLIENT_SECRET');
   }
 
-  // Polirural/Django requires Basic Auth Header
   const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
   const formBody = new URLSearchParams({
     grant_type: 'client_credentials',
@@ -58,34 +57,68 @@ app.post('/api/token', async (req, res) => {
     'Accept':         'application/json',
   };
 
-  const candidates = [
-    'https://www.poliruralplus.eu/o/token/', 
-    `${JACKDAW_BASE}/token`,
-    `${JACKDAW_BASE}/auth/token`
-  ];
-
-  let lastError = null;
-
-  for (const endpoint of candidates) {
-    console.log(`[token] Trying ${endpoint}`);
-    try {
-      const result = await httpsPost(endpoint, formBody, headers);
-
-      if (result.status >= 200 && result.status < 300) {
-        const data = JSON.parse(result.body);
-        console.log(`[token] ✅ Success from ${endpoint}`);
-        return res.json({
-          access_token: data.access_token,
-          token_type:   data.token_type || 'bearer',
-          expires_in:   data.expires_in || 3600,
-        });
-      }
-      lastError = { endpoint, status: result.status, body: result.body.slice(0, 100) };
-    } catch (err) {
-      lastError = { endpoint, status: 0, body: err.message };
-    }
+  // Primary token endpoint (Polirural/Django OIDC)
+  const tokenEndpoint = 'https://www.poliruralplus.eu/o/token/';
+  
+  const result = await httpsPost(tokenEndpoint, formBody, headers);
+  
+  if (result.status < 200 || result.status >= 300) {
+    throw new Error(`Token request failed with status ${result.status}: ${result.body}`);
   }
-  res.status(502).json({ error: 'token_fetch_failed', lastError });
+  
+  const data = JSON.parse(result.body);
+  return data.access_token;
+}
+
+// ── The Auth Bridge (Original endpoint for frontend token requests) ───────────
+app.post('/api/token', async (req, res) => {
+  try {
+    const access_token = await fetchAccessToken();
+    res.json({
+      access_token,
+      token_type: 'bearer',
+      expires_in: 3600,
+    });
+  } catch (err) {
+    console.error('[token] Error:', err.message);
+    res.status(502).json({ error: 'token_fetch_failed', details: err.message });
+  }
+});
+
+// ── Chat Proxy (Handles token + correct path automatically) ───────────────────
+app.post('/api/chat', async (req, res) => {
+  try {
+    // 1. Obtain a fresh token
+    const access_token = await fetchAccessToken();
+
+    // 2. Prepare the request to JackDaw
+    const chatBody = JSON.stringify(req.body);
+    const chatHeaders = {
+      'Authorization': `Bearer ${access_token}`,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(chatBody),
+      'Accept': 'application/json',
+    };
+
+    // 3. Send to the EXACT required JackDaw endpoint
+    const jackdawUrl = `${JACKDAW_BASE}/chat/v2/chat`;
+    console.log(`[chat] Forwarding to ${jackdawUrl}`);
+
+    const chatResponse = await httpsPost(jackdawUrl, chatBody, chatHeaders);
+
+    // 4. Forward status, headers, and body back to the frontend
+    res.status(chatResponse.status);
+    
+    // Forward relevant headers (excluding hop-by-hop)
+    if (chatResponse.headers['content-type']) {
+      res.set('Content-Type', chatResponse.headers['content-type']);
+    }
+    
+    res.send(chatResponse.body);
+  } catch (err) {
+    console.error('[chat] Proxy error:', err.message);
+    res.status(503).json({ error: 'chat_api_unavailable', details: err.message });
+  }
 });
 
 // ── Static Files & SPA Fallback ───────────────────────────────────────────────
@@ -104,7 +137,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-// ── Helper Function ───────────────────────────────────────────────────────────
+// ── Helper Function: HTTPS POST ───────────────────────────────────────────────
 function httpsPost(urlStr, body, headers) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(urlStr);
@@ -130,6 +163,9 @@ function httpsPost(urlStr, body, headers) {
   });
 }
 
+// ── Start Server ──────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n✅ Proxy started on port ${PORT}`);
+  console.log(`   Health check: http://localhost:${PORT}/api/health`);
+  console.log(`   Chat proxy:   POST /api/chat`);
 });

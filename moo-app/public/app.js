@@ -1,36 +1,12 @@
-/**
- * app.js — eMooJI Progressive Web App
- *
- * Features:
- *   - PWA install prompt handling
- *   - Service worker registration
- *   - JackDaw OAuth2 (client_credentials) + /mcp/connect + /chat_v2
- *   - Leaflet map with Polygon + Rectangle draw tools
- *   - Layer switcher (dark OSM / satellite via Stadia)
- *   - Field stats (area, centroid, perimeter, vertex count)
- *   - Mobile panel switching (map ↔ chat)
- *   - Animated splash screen
- *   - Auto-grow textarea
- *   - Markdown-ish message rendering
- *   - Unread badge on mobile tab
- */
-
 'use strict';
 
-/* ── Configuration ─────────────────────────────────────────────────────────── */
 const CFG = {
   jackdaw: {
-    // Direct JackDaw API — used for /mcp/connect and /chat_v2 with the bearer
-    // token obtained via the proxy. Credentials are NEVER in this file.
     baseUrl: 'https://api.jackdaw.online',
   },
   proxy: {
-    // Your Render proxy URL — same origin as the PWA if you use the combined deploy,
-    // or the separate Render service URL if you deploy proxy standalone.
-    // Change this to match your actual Render service URL.
-    tokenUrl: '/api/token',   // same-origin proxy endpoint (preferred)
-    // If your proxy is on a different subdomain, use the full URL instead:
-    // tokenUrl: 'https://emoo-ji-proxy.onrender.com/api/token',
+    tokenUrl: '/api/token',
+    chatUrl:  '/api/chat',
   },
   mcp: {
     serverUrl: 'https://lichtwiese-mcp.onrender.com/sse',
@@ -42,25 +18,22 @@ const CFG = {
   },
 };
 
-/* ── State ──────────────────────────────────────────────────────────────────── */
 const S = {
   token:        null,
   sessionId:    null,
-  polygon:      null,   // GeoJSON geometry string passed to JackDaw
+  polygon:      null,
   drawnLayer:   null,
   isBusy:       false,
   history:      [],
-  currentView:  'map',   // 'map' | 'chat'
+  currentView:  'map',
   unreadCount:  0,
   deferredInstall: null,
   currentLayer: 'street',
 };
 
-/* ── DOM ───────────────────────────────────────────────────────────────────── */
 const $ = id => document.getElementById(id);
 const Q = sel => document.querySelector(sel);
 
-/* ── Splash progress helper ─────────────────────────────────────────────────── */
 function splashProgress(pct, label) {
   const bar = $('splashBar');
   const txt = $('splashStatus');
@@ -75,9 +48,6 @@ function hideSplash() {
   if (app)    { app.removeAttribute('aria-hidden'); app.classList.add('visible'); }
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   MAP SETUP
-══════════════════════════════════════════════════════════════════════════════ */
 const map = L.map('map', {
   center: CFG.map.center,
   zoom:   CFG.map.zoom,
@@ -85,7 +55,6 @@ const map = L.map('map', {
   attributionControl: true,
 });
 
-// Tile layers
 const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '© <a href="https://openstreetmap.org">OSM</a>',
   maxZoom: 19,
@@ -98,14 +67,11 @@ const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/
 
 streetLayer.addTo(map);
 
-// Move Leaflet zoom control to bottom-right
 map.zoomControl.setPosition('bottomright');
 
-// Drawn items layer group
 const drawnItems = new L.FeatureGroup();
 map.addLayer(drawnItems);
 
-// Draw control
 const drawControl = new L.Control.Draw({
   position: 'topright',
   draw: {
@@ -142,7 +108,6 @@ const drawControl = new L.Control.Draw({
 });
 map.addControl(drawControl);
 
-/* ── Map draw events ─────────────────────────────────────────────────────────── */
 map.on(L.Draw.Event.CREATED, e => {
   clearDrawing();
   const layer = e.layer;
@@ -171,7 +136,6 @@ map.on(L.Draw.Event.DELETED, () => {
   setMapHint('Draw a field to begin');
 });
 
-/* ── Toolbar button handlers ─────────────────────────────────────────────────── */
 $('btnDrawPolygon').addEventListener('click', () => {
   new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
   setMapHint('Click to add vertices · Double-click to finish');
@@ -190,7 +154,6 @@ $('btnClear').addEventListener('click', () => {
 
 $('btnDemo').addEventListener('click', loadDemo);
 
-/* ── Layer switcher ──────────────────────────────────────────────────────────── */
 $('btnLayerSat').addEventListener('click', () => {
   if (S.currentLayer === 'satellite') return;
   map.removeLayer(streetLayer);
@@ -211,29 +174,24 @@ $('btnLayerStreet').addEventListener('click', () => {
   $('btnLayerSat').removeAttribute('data-active');
 });
 
-/* ── Field stats helpers ─────────────────────────────────────────────────────── */
 function showFieldStats(layer) {
   const stats = $('fieldStats');
   const geo   = layer.toGeoJSON();
   const ll    = layer.getLatLngs ? layer.getLatLngs()[0] : [];
 
-  // Area
   const areaM2  = L.GeometryUtil ? L.GeometryUtil.geodesicArea(ll) : approxArea(ll);
   const areaHa  = (areaM2 / 10000).toFixed(2);
 
-  // Centroid
   const bounds   = layer.getBounds();
   const center   = bounds.getCenter();
   const centroid = `${center.lat.toFixed(4)}°N ${center.lng.toFixed(4)}°E`;
 
-  // Perimeter (approximate, sum of edge distances)
   let perimM = 0;
   for (let i = 0; i < ll.length; i++) {
     perimM += ll[i].distanceTo(ll[(i + 1) % ll.length]);
   }
   const perimKm = (perimM / 1000).toFixed(2);
 
-  // Vertex count
   const pts = geo.geometry.type === 'Polygon'
     ? geo.geometry.coordinates[0].length - 1
     : 4;
@@ -245,7 +203,6 @@ function showFieldStats(layer) {
 
   stats.classList.add('visible');
 
-  // Update nav bar info
   $('navPolygonInfo').style.display = 'flex';
   $('navArea').textContent    = `${areaHa} ha`;
   $('navCoords').textContent  = centroid;
@@ -273,7 +230,6 @@ function setMapHint(text) {
   $('mapHint').childNodes[1].textContent = ' ' + text;
 }
 
-/* ── Demo loader ─────────────────────────────────────────────────────────────── */
 async function loadDemo() {
   clearDrawing();
   try {
@@ -302,11 +258,9 @@ async function loadDemo() {
 
     map.fitBounds(gl.getBounds(), { padding: [40, 40] });
 
-    // Use Land B as the active polygon
     const landB = data.features.find(f => f.properties?.name === 'Land B');
     if (landB) {
       S.polygon = JSON.stringify(landB.geometry);
-      // Fake a layer for stats
       const fakeLayer = L.geoJSON(landB);
       const ll = fakeLayer.getLayers()[0].getLatLngs()[0];
       showFieldStats(fakeLayer.getLayers()[0]);
@@ -331,24 +285,6 @@ function clearDrawing() {
   hideFieldStats();
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   JACKDAW API
-══════════════════════════════════════════════════════════════════════════════ */
-/**
- * fetchToken — obtain a JackDaw bearer token via the server-side proxy.
- *
- * WHY A PROXY?
- * The proxy (proxy.js on Render) holds JACKDAW_CLIENT_ID and
- * JACKDAW_CLIENT_SECRET as server-side environment variables.
- * The browser calls POST /api/token (same origin), the proxy calls
- * JackDaw with the real credentials, and returns only the bearer token.
- * Credentials are never exposed in browser JavaScript or network logs.
- *
- * The proxy also handles:
- *   - Trying multiple JackDaw token endpoint candidates
- *   - Enforcing HTTPS / blocking mixed-content redirects
- *   - Returning a clean { access_token, token_type, expires_in } response
- */
 async function fetchToken() {
   try {
     console.log('[Auth] Requesting token from proxy:', CFG.proxy.tokenUrl);
@@ -356,14 +292,12 @@ async function fetchToken() {
     const res = await fetch(CFG.proxy.tokenUrl, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      // No body needed — proxy uses its own server-side credentials
     });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       console.error('[Auth] Proxy token error:', res.status, err);
 
-      // Specific actionable messages based on status
       if (res.status === 503) {
         console.error('[Auth] Proxy not configured — set JACKDAW_CLIENT_ID and JACKDAW_CLIENT_SECRET in Render env vars');
       } else if (res.status === 502) {
@@ -384,7 +318,6 @@ async function fetchToken() {
     return true;
 
   } catch (err) {
-    // Network error reaching the proxy itself
     console.error('[Auth] Could not reach token proxy:', err.message);
     console.error('[Auth] Is the proxy deployed? Check CFG.proxy.tokenUrl:', CFG.proxy.tokenUrl);
     return false;
@@ -416,20 +349,6 @@ async function connectMCP() {
 }
 
 async function sendToJackDaw(userText) {
-  // Ensure token — re-fetch if expired or not yet acquired
-  if (!S.token) {
-    const ok = await fetchToken();
-    if (!ok) return (
-      '⚠️ **Could not connect to JackDaw.**\n\n' +
-      'This usually means one of:\n' +
-      '- The proxy server is not running (check your Render service)\n' +
-      '- `JACKDAW_CLIENT_ID` or `JACKDAW_CLIENT_SECRET` are not set in Render env vars\n\n' +
-      'Your map and drawing tools still work. To fix auth: check the Render dashboard, ' +
-      'then refresh this page.'
-    );
-  }
-
-  // Build system context
   const systemCtx = S.polygon
     ? `You are an expert agricultural and environmental analyst helping farmers understand their land. The farmer has drawn a polygon on an interactive map. Use this GeoJSON polygon geometry in ALL relevant tool calls: ${S.polygon}\n\nAlways use the provided tools to fetch real data. Never make up NDVI values, weather data, or terrain information.`
     : 'You are an expert agricultural analyst. No field polygon has been drawn yet. Politely ask the farmer to draw a field on the map first before you can run analysis tools, or answer general questions about farming and land management.';
@@ -443,26 +362,19 @@ async function sendToJackDaw(userText) {
   if (S.sessionId) payload.session_id = S.sessionId;
 
   try {
-    // Change this line:
-const res = await fetch(`${CFG.jackdaw.baseUrl}/chat/v2/chat`, { // Added /v2/chat {
+    const res = await fetch(CFG.proxy.chatUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${S.token}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
     if (res.status === 401) {
-      S.token = null;
-      const ok = await fetchToken();
-      if (!ok) return 'Session expired. Please refresh the page.';
-      return sendToJackDaw(userText);
+      return 'Session expired. Please refresh the page.';
     }
 
     if (!res.ok) {
-      const txt = await res.text().catch(() => res.statusText);
-      throw new Error(`${res.status}: ${txt.slice(0, 200)}`);
+      const errText = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status}: ${errText.slice(0, 200)}`);
     }
 
     const data = await res.json();
@@ -474,14 +386,11 @@ const res = await fetch(`${CFG.jackdaw.baseUrl}/chat/v2/chat`, { // Added /v2/ch
     return reply;
 
   } catch (err) {
-    console.error('[JackDaw] Chat error:', err);
-    return `Error contacting JackDaw: ${err.message}`;
+    console.error('[Chat] Proxy error:', err);
+    return `⚠️ Could not reach analysis service.\n\nError: ${err.message}`;
   }
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   CHAT UI
-══════════════════════════════════════════════════════════════════════════════ */
 function appendMessage(role, content, isLoading = false) {
   const feed = $('messages');
   const div  = document.createElement('div');
@@ -525,24 +434,15 @@ function appendMessage(role, content, isLoading = false) {
 }
 
 function renderMarkdown(text) {
-  // Convert simple markdown-ish syntax to HTML
   return text
-    // Code blocks
     .replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre class="result-card"><code>$1</code></pre>')
-    // Inline code
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Bold
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    // Italic
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    // Headers
     .replace(/^### (.+)$/gm, '<strong style="font-size:0.95em">$1</strong>')
     .replace(/^## (.+)$/gm,  '<strong>$1</strong>')
-    // Bullet lists
     .replace(/^[•\-\*] (.+)$/gm, '<span style="display:block;padding-left:12px;margin:2px 0">· $1</span>')
-    // Numbered lists
     .replace(/^\d+\. (.+)$/gm, '<span style="display:block;padding-left:12px;margin:2px 0">$1</span>')
-    // Paragraphs
     .replace(/\n\n+/g, '</p><p>')
     .replace(/\n/g, '<br>')
     .replace(/^(.*)$/, '<p>$1</p>');
@@ -569,7 +469,6 @@ async function handleSend() {
     loadingEl.remove();
     appendMessage('assistant', reply);
 
-    // If on mobile and user is viewing map, show badge
     if (isMobile() && S.currentView === 'map') {
       S.unreadCount++;
       showChatBadge();
@@ -595,7 +494,6 @@ function showChatBadge() {
   badge.hidden = false;
 }
 
-/* ── Input events ─────────────────────────────────────────────────────────────── */
 $('sendBtn').addEventListener('click', handleSend);
 
 $('chatInput').addEventListener('keydown', e => {
@@ -612,7 +510,6 @@ $('chatInput').addEventListener('input', () => {
 
 $('btnClearChat').addEventListener('click', () => {
   const feed = $('messages');
-  // Keep only the welcome message
   while (feed.children.length > 1) feed.removeChild(feed.lastChild);
   S.history = [];
   S.unreadCount = 0;
@@ -625,7 +522,6 @@ function autoResizeTextarea(el) {
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 
-/* ── Quick-prompt chips ──────────────────────────────────────────────────────── */
 document.querySelectorAll('.chip').forEach(btn => {
   btn.addEventListener('click', () => {
     $('chatInput').value = btn.dataset.prompt;
@@ -636,9 +532,6 @@ document.querySelectorAll('.chip').forEach(btn => {
   });
 });
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   MOBILE PANEL SWITCHING
-══════════════════════════════════════════════════════════════════════════════ */
 function isMobile() { return window.innerWidth <= 860; }
 
 function switchPanel(panel) {
@@ -653,7 +546,6 @@ function switchPanel(panel) {
   if (panel === 'chat') {
     S.unreadCount = 0;
     $('chatBadge').hidden = true;
-    // Refresh map when switching back
   }
   if (panel === 'map') {
     setTimeout(() => map.invalidateSize(), 350);
@@ -663,7 +555,6 @@ function switchPanel(panel) {
 $('tabMap').addEventListener('click',  () => switchPanel('map'));
 $('tabChat').addEventListener('click', () => switchPanel('chat'));
 
-// Set initial workspace view on mobile
 if (isMobile()) Q('.workspace').setAttribute('data-view', 'map');
 
 window.addEventListener('resize', () => {
@@ -673,18 +564,12 @@ window.addEventListener('resize', () => {
   }
 });
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   CONNECTION STATUS
-══════════════════════════════════════════════════════════════════════════════ */
 function setConnectionStatus(state, label) {
   const badge = $('connectionBadge');
   badge.className = `connection-badge connection-badge--${state}`;
   $('connectionLabel').textContent = label;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   PWA — Service Worker + Install Prompt
-══════════════════════════════════════════════════════════════════════════════ */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
@@ -693,7 +578,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Capture install prompt
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   S.deferredInstall = e;
@@ -731,15 +615,7 @@ window.addEventListener('appinstalled', () => {
   S.deferredInstall = null;
 });
 
-// Handle URL params (from manifest shortcuts) — processed inside init() finally block
-
-/* ══════════════════════════════════════════════════════════════════════════════
-   INITIALISATION — Animated splash sequence
-   Fail-safe: splash ALWAYS clears, even if token fetch hangs or throws.
-   A hard 8-second timeout ensures we never get stuck on the splash screen.
-══════════════════════════════════════════════════════════════════════════════ */
 async function init() {
-  // Hard timeout: if init takes longer than 8 s, force-clear the splash
   const splashTimeout = setTimeout(() => {
     console.warn('[init] Timeout — forcing splash clear');
     hideSplash();
@@ -754,7 +630,6 @@ async function init() {
     splashProgress(30, 'Connecting to JackDaw…');
     setConnectionStatus('connecting', 'Connecting');
 
-    // Token fetch with its own 6-second race so we never block indefinitely
     const tokenOk = await Promise.race([
       fetchToken(),
       sleep(6000).then(() => { console.warn('[init] Token fetch timed out'); return false; }),
@@ -764,7 +639,6 @@ async function init() {
       splashProgress(65, 'Registering tools…');
       setConnectionStatus('connecting', 'Registering');
 
-      // MCP connect is non-critical — don't let it block or crash init
       await Promise.race([
         connectMCP(),
         sleep(4000).then(() => false),
@@ -775,7 +649,6 @@ async function init() {
     } else {
       splashProgress(90, 'Auth failed — map ready');
       setConnectionStatus('error', 'Auth failed');
-      // App is still fully usable for map drawing — chat will retry on first send
     }
 
     await sleep(300);
@@ -783,7 +656,6 @@ async function init() {
     await sleep(250);
 
   } catch (err) {
-    // Should never reach here, but absolutely must not leave splash up
     console.error('[init] Unexpected error:', err);
     setConnectionStatus('error', 'Error');
   } finally {
@@ -791,7 +663,6 @@ async function init() {
     hideSplash();
     updateSendBtn();
 
-    // Handle demo shortcut from manifest
     if (new URLSearchParams(location.search).get('mode') === 'demo') {
       setTimeout(loadDemo, 600);
     }
@@ -802,7 +673,6 @@ async function init() {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Outer safety net — init() itself has a finally block, but just in case
 init().catch(err => {
   console.error('[init] Uncaught:', err);
   hideSplash();
