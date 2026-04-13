@@ -3,13 +3,13 @@
 /* ── Configuration ─────────────────────────────────────────────────────────── */
 const CFG = {
   jackdaw: {
-    baseUrl:      'https://api.jackdaw.online',
-    clientId:     window.JACKDAW_CLIENT_ID     || 'CuAb7Lqa3CO4VvOqS6dqmRXUB1OKfKyItPZpB93',
+    baseUrl: 'https://api.jackdaw.online',
+    clientId: window.JACKDAW_CLIENT_ID || 'CuAb7Lqa3CO4VvOqS6dqmRXUB1OKfKyItPZpB93',
     clientSecret: window.JACKDAW_CLIENT_SECRET || '0umAYgVipY8CGr9BC4IF8umicqj4oaeOOuxGRFVUpI2m1IvhXOLqprkFY2zzYEBJBcNdZaxVYYWbdNZhIxw634UEpOrZEeVfutC6ZWzBrAlLv5Ru3FerjG54u5USinwR',
   },
   mcp: {
     serverUrl: 'https://emooji.onrender.com/sse',
-    name:      'moofind-emoo-ji-mcp',
+    name: 'moofind-emoo-ji-mcp',
   },
   map: {
     center: [49.8731, 8.6673],
@@ -19,14 +19,14 @@ const CFG = {
 
 /* ── State ──────────────────────────────────────────────────────────────────── */
 const S = {
-  token:        null,
-  sessionId:    null,
-  polygon:      null,   // GeoJSON geometry string passed to JackDaw
-  drawnLayer:   null,
-  isBusy:       false,
-  history:      [],
-  currentView:  'map',   // 'map' | 'chat'
-  unreadCount:  0,
+  token: null,
+  sessionId: null,
+  polygon: null,   // GeoJSON geometry string passed to JackDaw
+  drawnLayer: null,
+  isBusy: false,
+  history: [],
+  currentView: 'map',   // 'map' | 'chat'
+  unreadCount: 0,
   deferredInstall: null,
   currentLayer: 'street',
 };
@@ -45,9 +45,9 @@ function splashProgress(pct, label) {
 
 function hideSplash() {
   const splash = $('splash');
-  const app    = $('app');
+  const app = $('app');
   if (splash) splash.classList.add('hidden');
-  if (app)    { app.removeAttribute('aria-hidden'); app.classList.add('visible'); }
+  if (app) { app.removeAttribute('aria-hidden'); app.classList.add('visible'); }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -55,7 +55,7 @@ function hideSplash() {
 ══════════════════════════════════════════════════════════════════════════════ */
 const map = L.map('map', {
   center: CFG.map.center,
-  zoom:   CFG.map.zoom,
+  zoom: CFG.map.zoom,
   zoomControl: true,
   attributionControl: true,
 });
@@ -104,9 +104,9 @@ const drawControl = new L.Control.Draw({
         weight: 2,
       },
     },
-    polyline:     false,
-    circle:       false,
-    marker:       false,
+    polyline: false,
+    circle: false,
+    marker: false,
     circlemarker: false,
   },
   edit: {
@@ -189,16 +189,16 @@ $('btnLayerStreet').addEventListener('click', () => {
 /* ── Field stats helpers ─────────────────────────────────────────────────────── */
 function showFieldStats(layer) {
   const stats = $('fieldStats');
-  const geo   = layer.toGeoJSON();
-  const ll    = layer.getLatLngs ? layer.getLatLngs()[0] : [];
+  const geo = layer.toGeoJSON();
+  const ll = layer.getLatLngs ? layer.getLatLngs()[0] : [];
 
   // Area
-  const areaM2  = L.GeometryUtil ? L.GeometryUtil.geodesicArea(ll) : approxArea(ll);
-  const areaHa  = (areaM2 / 10000).toFixed(2);
+  const areaM2 = L.GeometryUtil ? L.GeometryUtil.geodesicArea(ll) : approxArea(ll);
+  const areaHa = (areaM2 / 10000).toFixed(2);
 
   // Centroid
-  const bounds   = layer.getBounds();
-  const center   = bounds.getCenter();
+  const bounds = layer.getBounds();
+  const center = bounds.getCenter();
   const centroid = `${center.lat.toFixed(4)}°N ${center.lng.toFixed(4)}°E`;
 
   // Perimeter (approximate, sum of edge distances)
@@ -213,17 +213,17 @@ function showFieldStats(layer) {
     ? geo.geometry.coordinates[0].length - 1
     : 4;
 
-  $('statArea').textContent    = `${areaHa} ha`;
+  $('statArea').textContent = `${areaHa} ha`;
   $('statCentroid').textContent = centroid;
-  $('statPerim').textContent   = `${perimKm} km`;
-  $('statPoints').textContent  = `${pts}`;
+  $('statPerim').textContent = `${perimKm} km`;
+  $('statPoints').textContent = `${pts}`;
 
   stats.classList.add('visible');
 
   // Update nav bar info
   $('navPolygonInfo').style.display = 'flex';
-  $('navArea').textContent    = `${areaHa} ha`;
-  $('navCoords').textContent  = centroid;
+  $('navArea').textContent = `${areaHa} ha`;
+  $('navCoords').textContent = centroid;
 }
 
 function hideFieldStats() {
@@ -252,7 +252,7 @@ function setMapHint(text) {
 async function loadDemo() {
   clearDrawing();
   try {
-    const res  = await fetch('lichtwiese.geojson');
+    const res = await fetch('lichtwiese.geojson');
     const data = await res.json();
 
     const gl = L.geoJSON(data, {
@@ -301,8 +301,8 @@ async function loadDemo() {
 
 function clearDrawing() {
   drawnItems.clearLayers();
-  S.polygon     = null;
-  S.drawnLayer  = null;
+  S.polygon = null;
+  S.drawnLayer = null;
   hideFieldStats();
 }
 
@@ -311,12 +311,13 @@ function clearDrawing() {
 ══════════════════════════════════════════════════════════════════════════════ */
 async function fetchToken() {
   try {
-    const res = await fetch(`${CFG.jackdaw.baseUrl}/auth/token/`, {
+    // In app.js, update line 195 to use the root token endpoint:
+    const res = await fetch(`https://api.jackdaw.online/token`, { // Removed /auth and trailing slash
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type:    'client_credentials',
-        client_id:     CFG.jackdaw.clientId,
+        grant_type: 'client_credentials',
+        client_id: CFG.jackdaw.clientId,
         client_secret: CFG.jackdaw.clientSecret,
       }),
     });
@@ -336,12 +337,12 @@ async function connectMCP() {
     const res = await fetch(`${CFG.jackdaw.baseUrl}/mcp/connect`, {
       method: 'POST',
       headers: {
-        'Content-Type':  'application/json',
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${S.token}`,
       },
       body: JSON.stringify({
         server_url: CFG.mcp.serverUrl,
-        name:       CFG.mcp.name,
+        name: CFG.mcp.name,
       }),
     });
     if (!res.ok) return false;
@@ -370,7 +371,7 @@ async function sendToJackDaw(userText) {
 
   const payload = {
     messages: S.history,
-    system:   systemCtx,
+    system: systemCtx,
   };
   if (S.sessionId) payload.session_id = S.sessionId;
 
@@ -378,7 +379,7 @@ async function sendToJackDaw(userText) {
     const res = await fetch(`${CFG.jackdaw.baseUrl}/chat_v2`, {
       method: 'POST',
       headers: {
-        'Content-Type':  'application/json',
+        'Content-Type': 'application/json',
         'Authorization': `Bearer ${S.token}`,
       },
       body: JSON.stringify(payload),
@@ -415,7 +416,7 @@ async function sendToJackDaw(userText) {
 ══════════════════════════════════════════════════════════════════════════════ */
 function appendMessage(role, content, isLoading = false) {
   const feed = $('messages');
-  const div  = document.createElement('div');
+  const div = document.createElement('div');
   div.className = `message message--${role}`;
   if (isLoading) div.id = 'typingMsg';
 
@@ -468,7 +469,7 @@ function renderMarkdown(text) {
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     // Headers
     .replace(/^### (.+)$/gm, '<strong style="font-size:0.95em">$1</strong>')
-    .replace(/^## (.+)$/gm,  '<strong>$1</strong>')
+    .replace(/^## (.+)$/gm, '<strong>$1</strong>')
     // Bullet lists
     .replace(/^[•\-\*] (.+)$/gm, '<span style="display:block;padding-left:12px;margin:2px 0">· $1</span>')
     // Numbered lists
@@ -480,7 +481,7 @@ function renderMarkdown(text) {
 }
 
 async function handleSend() {
-  const input   = $('chatInput');
+  const input = $('chatInput');
   const userText = input.value.trim();
   if (!userText || S.isBusy) return;
 
@@ -515,9 +516,9 @@ async function handleSend() {
 }
 
 function updateSendBtn() {
-  const btn     = $('sendBtn');
+  const btn = $('sendBtn');
   const hasText = $('chatInput').value.trim().length > 0;
-  btn.disabled  = !hasText || S.isBusy;
+  btn.disabled = !hasText || S.isBusy;
 }
 
 function showChatBadge() {
@@ -591,7 +592,7 @@ function switchPanel(panel) {
   }
 }
 
-$('tabMap').addEventListener('click',  () => switchPanel('map'));
+$('tabMap').addEventListener('click', () => switchPanel('map'));
 $('tabChat').addEventListener('click', () => switchPanel('chat'));
 
 // Set initial workspace view on mobile
@@ -616,13 +617,13 @@ function setConnectionStatus(state, label) {
 /* ══════════════════════════════════════════════════════════════════════════════
    PWA — Service Worker + Install Prompt
 ══════════════════════════════════════════════════════════════════════════════ */
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('[SW] Registered:', reg.scope))
-      .catch(err => console.warn('[SW] Registration failed:', err));
-  });
-}
+// if ('serviceWorker' in navigator) {
+//   window.addEventListener('load', () => {
+//     navigator.serviceWorker.register('/sw.js')
+//       .then(reg => console.log('[SW] Registered:', reg.scope))
+//       .catch(err => console.warn('[SW] Registration failed:', err));
+//   });
+// }
 
 // Capture install prompt
 window.addEventListener('beforeinstallprompt', e => {
