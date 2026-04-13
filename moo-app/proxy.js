@@ -100,32 +100,34 @@ app.get('/api/health', (req, res) => {
 // ═════════════════════════════════════════════════════════════════════════════
 app.post('/api/token', async (req, res) => {
   if (!CLIENT_ID || !CLIENT_SECRET) {
-    return res.status(503).json({
-      error:  'proxy_not_configured',
-      detail: 'JACKDAW_CLIENT_ID / JACKDAW_CLIENT_SECRET are not set. Add them in the Render environment variables dashboard.',
-    });
+    return res.status(503).json({ error: 'proxy_not_configured' });
   }
 
-  // Form-encoded body for OAuth2 client_credentials grant
+  // 1. Prepare the Basic Auth header (Base64 encoding id:secret)
+  const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
+
+  // 2. Prepare the Form Body
   const formBody = new URLSearchParams({
-    grant_type:    'client_credentials',
-    client_id:     CLIENT_ID,
+    grant_type: 'client_credentials',
+    // We send them in the body TOO, just in case
+    client_id: CLIENT_ID,
     client_secret: CLIENT_SECRET,
   }).toString();
 
   const headers = {
+    'Authorization':  authHeader, // <--- THIS IS THE MISSING PIECE
     'Content-Type':   'application/x-www-form-urlencoded',
     'Content-Length': Buffer.byteLength(formBody),
     'Accept':         'application/json',
   };
 
-  // Replace your existing candidates array with this:
   const candidates = [
-    'https://www.poliruralplus.eu/o/token/', // <--- THE REAL ENDPOINT
+    'https://www.poliruralplus.eu/o/token/', // Identity Provider
     `${JACKDAW_BASE}/token`,
     `${JACKDAW_BASE}/auth/token`,
   ];
 
+  // ... rest of your loop logic ...
   let lastError = null;
 
   for (const endpoint of candidates) {
