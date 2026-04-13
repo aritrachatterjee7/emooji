@@ -348,6 +348,30 @@ async function connectMCP() {
   }
 }
 
+function geojsonToWKT(geometry) {
+  if (!geometry) return null;
+  const geom = typeof geometry === 'string' ? JSON.parse(geometry) : geometry;
+  
+  if (geom.type === 'Polygon') {
+    const ring = geom.coordinates[0];
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    const isClosed = first[0] === last[0] && first[1] === last[1];
+    
+    let points;
+    if (!isClosed) {
+      points = ring.concat([first]).map(c => c.join(' ')).join(', ');
+    } else {
+      points = ring.map(c => c.join(' ')).join(', ');
+    }
+    
+    const wkt = `POLYGON((${points}))`;
+    console.log('[WKT] Generated:', wkt);
+    return wkt;
+  }
+  return null;
+}
+
 async function sendToJackDaw(userText) {
   const systemCtx = S.polygon
     ? `You are an expert agricultural and environmental analyst helping farmers understand their land. Use the provided tools to fetch real data. Never make up NDVI values, weather data, or terrain information.`
@@ -371,6 +395,8 @@ async function sendToJackDaw(userText) {
       };
     }
   }
+
+  console.log('[Chat] Payload:', JSON.stringify(payload, null, 2));
 
   try {
     const res = await fetch(CFG.proxy.chatUrl, {
