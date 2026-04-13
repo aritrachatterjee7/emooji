@@ -350,16 +350,27 @@ async function connectMCP() {
 
 async function sendToJackDaw(userText) {
   const systemCtx = S.polygon
-    ? `You are an expert agricultural and environmental analyst helping farmers understand their land. The farmer has drawn a polygon on an interactive map. Use this GeoJSON polygon geometry in ALL relevant tool calls: ${S.polygon}\n\nAlways use the provided tools to fetch real data. Never make up NDVI values, weather data, or terrain information.`
-    : 'You are an expert agricultural analyst. No field polygon has been drawn yet. Politely ask the farmer to draw a field on the map first before you can run analysis tools, or answer general questions about farming and land management.';
+    ? `You are an expert agricultural and environmental analyst helping farmers understand their land. Use the provided tools to fetch real data. Never make up NDVI values, weather data, or terrain information.`
+    : 'You are an expert agricultural analyst. No field polygon has been drawn yet. Politely ask the farmer to draw a field on the map first.';
 
   S.history.push({ role: 'user', content: userText });
 
   const payload = {
     messages: S.history,
-    system:   systemCtx,
+    system: systemCtx,
   };
+
   if (S.sessionId) payload.session_id = S.sessionId;
+
+  if (S.polygon) {
+    const wkt = geojsonToWKT(S.polygon);
+    if (wkt) {
+      payload.geometry = {
+        wkt: wkt,
+        srid: 4326
+      };
+    }
+  }
 
   try {
     const res = await fetch(CFG.proxy.chatUrl, {
