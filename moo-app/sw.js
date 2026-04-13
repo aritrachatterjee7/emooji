@@ -1,9 +1,3 @@
-/**
- * sw.js — eMooJI Service Worker
- * Provides offline shell, background sync, and asset caching.
- * Strategy: Cache-first for static assets, network-first for API calls.
- */
-
 const CACHE_VERSION = 'emoo-ji-v1';
 const STATIC_CACHE  = `${CACHE_VERSION}-static`;
 const TILE_CACHE    = `${CACHE_VERSION}-tiles`;
