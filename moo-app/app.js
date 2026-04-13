@@ -311,7 +311,7 @@ function clearDrawing() {
 ══════════════════════════════════════════════════════════════════════════════ */
 async function fetchToken() {
   try {
-    const res = await fetch(`${CFG.jackdaw.baseUrl}/auth/token`, {
+    const res = await fetch(`${CFG.jackdaw.baseUrl}/auth/token/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
