@@ -9,7 +9,7 @@ const CFG = {
     chatUrl:  '/api/chat',
   },
   mcp: {
-    serverUrl: 'https://lichtwiese-mcp.onrender.com/sse',
+    serverUrl: 'https://emooji.onrender.com/sse',
     name:      'moofind-emoo-ji-mcp',
   },
   map: {
