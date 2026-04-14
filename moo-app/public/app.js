@@ -405,6 +405,7 @@ async function sendToJackDaw(userText) {
       srid: 4326,
       wkt: wktString
     };
+    console.log('[Chat] WKT attached as payload.wkt');
   }
 }
 
