@@ -357,29 +357,21 @@ function geojsonToWKT(geometry) {
   }
 
   // WKT standard: longitude first, then latitude (same as GeoJSON [lng, lat])
-  // Round to 6 decimal places to avoid floating-point noise like 49.87200000001
-  const toPoint = coord => `${Number(coord[0]).toFixed(6)} ${Number(coord[1]).toFixed(6)}`;
+  const toPoint = coord => `${coord[0]} ${coord[1]}`;
   const points = ring.map(toPoint);
 
-  // Close the ring numerically (don't compare strings — floats may differ by epsilon)
+  // Close the ring if not already closed
   const first = ring[0];
   const last  = ring[ring.length - 1];
-  const isClosed = (
-    Math.abs(first[0] - last[0]) < 1e-9 &&
-    Math.abs(first[1] - last[1]) < 1e-9
-  );
+  const isClosed = (first[0] === last[0] && first[1] === last[1]);
   if (!isClosed) {
-    points.push(points[0]);  // close by repeating the first point
+    points.push(points[0]);
   }
 
-  const wkt = `POLYGON((${points.join(', ')}))`;
+  // JackDaw expects double parentheses: POLYGON (( ... ))
+  const wkt = `POLYGON ((${points.join(', ')}))`;
 
-  console.log('[WKT] Geometry type:', geom.type);
-  console.log('[WKT] Point count:', points.length, '(closed ring)');
-  console.log('[WKT] First point (lng lat):', points[0]);
-  console.log('[WKT] Last  point (lng lat):', points[points.length - 1]);
   console.log('[WKT] Full WKT:', wkt);
-
   return wkt;
 }
 
@@ -406,14 +398,14 @@ async function sendToJackDaw(userText) {
   //   "geometry"  — field name we tried first
   // The proxy forwards req.body directly so JackDaw receives everything.
   if (S.polygon) {
-    const wkt = geojsonToWKT(S.polygon);
-    if (wkt) {
-      const wktGeom = { wkt, srid: 4326 };
-      payload.location = wktGeom;   // try this field name first
-      payload.geometry = wktGeom;   // keep this too as fallback
-      console.log('[Chat] WKT attached to payload.location + payload.geometry');
-    }
+  const wktString = geojsonToWKT(S.polygon);
+  if (wktString) {
+    payload.wkt = {
+      srid: 4326,
+      wkt: wktString
+    };
   }
+}
 
   console.log('[Chat] Sending payload to', CFG.proxy.chatUrl);
   console.log('[Chat] Payload preview:', JSON.stringify({
