@@ -100,20 +100,48 @@ app.post('/api/chat', async (req, res) => {
       'Accept': 'application/json',
     };
 
-    // 3. Send to the EXACT required JackDaw endpoint
-    const jackdawUrl = `${JACKDAW_BASE}/chat/v2/chat`;
-    console.log(`[chat] Forwarding to ${jackdawUrl}`);
+    // 3. Try JackDaw chat endpoints in order until one succeeds.
+    //    /chat_v2        — original working path (try first)
+    //    /chat/v2/chat   — alternate path (try second)
+    //    /v2/chat        — another common variant
+    const chatEndpoints = [
+      `${JACKDAW_BASE}/chat_v2`,
+      `${JACKDAW_BASE}/chat/v2/chat`,
+      `${JACKDAW_BASE}/v2/chat`,
+    ];
 
-    const chatResponse = await httpsPost(jackdawUrl, chatBody, chatHeaders);
+    let chatResponse = null;
+    let usedUrl = null;
+
+    for (const url of chatEndpoints) {
+      console.log(`[chat] Trying ${url}`);
+      const attempt = await httpsPost(url, chatBody, chatHeaders);
+      // 404 = wrong path, try next. Anything else (200, 400, 401, 500) = right path.
+      if (attempt.status === 404) {
+        console.log(`[chat] 404 on ${url} — trying next endpoint`);
+        continue;
+      }
+      chatResponse = attempt;
+      usedUrl = url;
+      console.log(`[chat] Got ${attempt.status} from ${url}`);
+      break;
+    }
+
+    if (!chatResponse) {
+      return res.status(502).json({
+        error: 'chat_endpoint_not_found',
+        detail: 'All JackDaw chat endpoint candidates returned 404. Check JACKDAW_BASE_URL.',
+        tried: chatEndpoints,
+      });
+    }
 
     // 4. Forward status, headers, and body back to the frontend
     res.status(chatResponse.status);
-    
-    // Forward relevant headers (excluding hop-by-hop)
+
     if (chatResponse.headers['content-type']) {
       res.set('Content-Type', chatResponse.headers['content-type']);
     }
-    
+
     res.send(chatResponse.body);
   } catch (err) {
     console.error('[chat] Proxy error:', err.message);

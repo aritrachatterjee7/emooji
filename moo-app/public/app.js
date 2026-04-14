@@ -344,73 +344,100 @@ async function connectMCP() {
 function geojsonToWKT(geometry) {
   if (!geometry) return null;
   const geom = typeof geometry === 'string' ? JSON.parse(geometry) : geometry;
-  
-  if (geom.type === 'Polygon') {
-    const ring = geom.coordinates[0];
-    
-    // Ensure longitude, latitude order (WKT standard)
-    const points = ring.map(coord => {
-      const lng = coord[0];
-      const lat = coord[1];
-      return `${lng} ${lat}`;
-    });
-    
-    // Close the ring if not already closed
-    const first = points[0];
-    const last = points[points.length - 1];
-    if (first !== last) {
-      points.push(first);
-    }
-    
-    const wkt = `POLYGON((${points.join(', ')}))`;
-    console.log('[WKT] First point (lng lat):', points[0]);
-    console.log('[WKT] Full WKT:', wkt);
-    return wkt;
+
+  if (geom.type !== 'Polygon') {
+    console.warn('[WKT] Only Polygon supported, got:', geom.type);
+    return null;
   }
-  return null;
+
+  const ring = geom.coordinates[0];
+  if (!ring || ring.length < 3) {
+    console.warn('[WKT] Ring has fewer than 3 points:', ring);
+    return null;
+  }
+
+  // WKT standard: longitude first, then latitude (same as GeoJSON [lng, lat])
+  // Round to 6 decimal places to avoid floating-point noise like 49.87200000001
+  const toPoint = coord => `${Number(coord[0]).toFixed(6)} ${Number(coord[1]).toFixed(6)}`;
+  const points = ring.map(toPoint);
+
+  // Close the ring numerically (don't compare strings — floats may differ by epsilon)
+  const first = ring[0];
+  const last  = ring[ring.length - 1];
+  const isClosed = (
+    Math.abs(first[0] - last[0]) < 1e-9 &&
+    Math.abs(first[1] - last[1]) < 1e-9
+  );
+  if (!isClosed) {
+    points.push(points[0]);  // close by repeating the first point
+  }
+
+  const wkt = `POLYGON((${points.join(', ')}))`;
+
+  console.log('[WKT] Geometry type:', geom.type);
+  console.log('[WKT] Point count:', points.length, '(closed ring)');
+  console.log('[WKT] First point (lng lat):', points[0]);
+  console.log('[WKT] Last  point (lng lat):', points[points.length - 1]);
+  console.log('[WKT] Full WKT:', wkt);
+
+  return wkt;
 }
 
 async function sendToJackDaw(userText) {
+  // Build system context.
+  // CRITICAL: the polygon MUST be in the system prompt so JackDaw knows what
+  // geometry to pass to MCP tools like get_ndvi_for_area(geojson_polygon).
+  // Without it, JackDaw calls the tools with no polygon and they return errors.
   const systemCtx = S.polygon
-    ? `You are an expert agricultural and environmental analyst helping farmers understand their land. Use the provided tools to fetch real data. Never make up NDVI values, weather data, or terrain information.`
-    : 'You are an expert agricultural analyst. No field polygon has been drawn yet. Politely ask the farmer to draw a field on the map first.';
+    ? `You are an expert agricultural and environmental analyst helping farmers understand their land. The farmer has drawn a polygon on the map. Use this GeoJSON polygon geometry in ALL relevant MCP tool calls: ${S.polygon}\n\nAlways use the provided tools to fetch real data. Never make up NDVI values, weather data, or terrain information.`
+    : 'You are an expert agricultural analyst. No field polygon has been drawn yet. Ask the farmer to draw a field on the map first before running analysis tools.';
 
   S.history.push({ role: 'user', content: userText });
 
   const payload = {
-    messages: S.history,
-    system: systemCtx,
+    messages:   S.history,
+    system:     systemCtx,
   };
 
   if (S.sessionId) payload.session_id = S.sessionId;
 
+  // Attach geometry in ALL formats JackDaw might accept:
+  //   "location"  — field name used in newer JackDaw API versions
+  //   "geometry"  — field name we tried first
+  // The proxy forwards req.body directly so JackDaw receives everything.
   if (S.polygon) {
     const wkt = geojsonToWKT(S.polygon);
     if (wkt) {
-      // JackDaw expects a "geometry" object containing wkt and srid
-      payload.geometry = {
-        wkt: wkt,
-        srid: 4326
-      };
+      const wktGeom = { wkt, srid: 4326 };
+      payload.location = wktGeom;   // try this field name first
+      payload.geometry = wktGeom;   // keep this too as fallback
+      console.log('[Chat] WKT attached to payload.location + payload.geometry');
     }
   }
 
-  console.log('[Chat] Payload:', JSON.stringify(payload, null, 2));
+  console.log('[Chat] Sending payload to', CFG.proxy.chatUrl);
+  console.log('[Chat] Payload preview:', JSON.stringify({
+    ...payload,
+    system: payload.system.slice(0, 80) + '…',
+    messages: `[${payload.messages.length} messages]`,
+  }, null, 2));
 
   try {
     const res = await fetch(CFG.proxy.chatUrl, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body:    JSON.stringify(payload),
     });
 
     if (res.status === 401) {
+      S.token = null;  // force re-auth on next message
       return 'Session expired. Please refresh the page.';
     }
 
     if (!res.ok) {
       const errText = await res.text().catch(() => res.statusText);
-      throw new Error(`${res.status}: ${errText.slice(0, 200)}`);
+      console.error('[Chat] JackDaw error response:', res.status, errText);
+      throw new Error(`${res.status}: ${errText.slice(0, 300)}`);
     }
 
     const data = await res.json();
@@ -420,8 +447,9 @@ async function sendToJackDaw(userText) {
 
     S.history.push({ role: 'assistant', content: reply });
     return reply;
+
   } catch (err) {
-    console.error('[Chat] Proxy error:', err);
+    console.error('[Chat] Error:', err);
     return `⚠️ Could not reach analysis service.\n\nError: ${err.message}`;
   }
 }
