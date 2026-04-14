@@ -356,14 +356,11 @@ function geojsonToWKT(geometry) {
     return null;
   }
 
-  // Log the first coordinate to verify order
   console.log('[WKT] First coordinate from GeoJSON:', ring[0]);
   console.log('[WKT] Interpreting as [lng, lat] =>', ring[0][0], ring[0][1]);
 
-  // Use lng, lat (coord[0], coord[1])
   const points = ring.map(coord => `${coord[0]} ${coord[1]}`);
 
-  // Close ring if not already closed
   const first = points[0];
   const last = points[points.length - 1];
   if (first !== last) {
@@ -377,10 +374,6 @@ function geojsonToWKT(geometry) {
 }
 
 async function sendToJackDaw(userText) {
-  // Build system context.
-  // CRITICAL: the polygon MUST be in the system prompt so JackDaw knows what
-  // geometry to pass to MCP tools like get_ndvi_for_area(geojson_polygon).
-  // Without it, JackDaw calls the tools with no polygon and they return errors.
   const systemCtx = S.polygon
     ? `You are an expert agricultural and environmental analyst helping farmers understand their land. The farmer has drawn a polygon on the map. Use this GeoJSON polygon geometry in ALL relevant MCP tool calls: ${S.polygon}\n\nAlways use the provided tools to fetch real data. Never make up NDVI values, weather data, or terrain information.`
     : 'You are an expert agricultural analyst. No field polygon has been drawn yet. Ask the farmer to draw a field on the map first before running analysis tools.';
@@ -388,26 +381,22 @@ async function sendToJackDaw(userText) {
   S.history.push({ role: 'user', content: userText });
 
   const payload = {
-    messages:   S.history,
-    system:     systemCtx,
+    messages: S.history,
+    system:   systemCtx,
   };
 
   if (S.sessionId) payload.session_id = S.sessionId;
 
-  // Attach geometry in ALL formats JackDaw might accept:
-  //   "location"  — field name used in newer JackDaw API versions
-  //   "geometry"  — field name we tried first
-  // The proxy forwards req.body directly so JackDaw receives everything.
   if (S.polygon) {
-  const wktString = geojsonToWKT(S.polygon);
-  if (wktString) {
-    payload.wkt = {
-      srid: 4326,
-      wkt: wktString
-    };
-    console.log('[Chat] WKT attached as payload.wkt');
+    const wktString = geojsonToWKT(S.polygon);
+    if (wktString) {
+      payload.wkt = {
+        srid: 4326,
+        wkt: wktString
+      };
+      console.log('[Chat] WKT attached as payload.wkt');
+    }
   }
-}
 
   console.log('[Chat] Sending payload to', CFG.proxy.chatUrl);
   console.log('[Chat] Payload preview:', JSON.stringify({
@@ -424,7 +413,7 @@ async function sendToJackDaw(userText) {
     });
 
     if (res.status === 401) {
-      S.token = null;  // force re-auth on next message
+      S.token = null;
       return 'Session expired. Please refresh the page.';
     }
 
@@ -435,9 +424,23 @@ async function sendToJackDaw(userText) {
     }
 
     const data = await res.json();
-    const reply = data.message || data.content || data.response
-      || (Array.isArray(data.content) ? data.content.map(c => c.text || '').join('\n') : null)
-      || JSON.stringify(data);
+
+    // ── CORRECTED RESPONSE EXTRACTION ─────────────────────────────────
+    let reply;
+    // JackDaw returns an array with object(s) containing { msg: { content, role } }
+    if (Array.isArray(data) && data.length > 0 && data[0].msg) {
+      reply = data[0].msg.content;
+      // Save thread_id for conversation continuity
+      if (data[0].thread_id) S.sessionId = data[0].thread_id;
+    } else if (data.message) {
+      reply = data.message;
+    } else if (data.content) {
+      reply = typeof data.content === 'string' ? data.content : data.content.text || JSON.stringify(data.content);
+    } else if (data.response) {
+      reply = data.response;
+    } else {
+      reply = JSON.stringify(data);
+    }
 
     S.history.push({ role: 'assistant', content: reply });
     return reply;
