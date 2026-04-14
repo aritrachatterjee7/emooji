@@ -356,19 +356,20 @@ function geojsonToWKT(geometry) {
     return null;
   }
 
-  // WKT standard: longitude first, then latitude (same as GeoJSON [lng, lat])
-  const toPoint = coord => `${coord[0]} ${coord[1]}`;
-  const points = ring.map(toPoint);
+  // Log the first coordinate to verify order
+  console.log('[WKT] First coordinate from GeoJSON:', ring[0]);
+  console.log('[WKT] Interpreting as [lng, lat] =>', ring[0][0], ring[0][1]);
 
-  // Close the ring if not already closed
-  const first = ring[0];
-  const last  = ring[ring.length - 1];
-  const isClosed = (first[0] === last[0] && first[1] === last[1]);
-  if (!isClosed) {
-    points.push(points[0]);
+  // Use lng, lat (coord[0], coord[1])
+  const points = ring.map(coord => `${coord[0]} ${coord[1]}`);
+
+  // Close ring if not already closed
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first !== last) {
+    points.push(first);
   }
 
-  // JackDaw expects double parentheses: POLYGON (( ... ))
   const wkt = `POLYGON ((${points.join(', ')}))`;
 
   console.log('[WKT] Full WKT:', wkt);
