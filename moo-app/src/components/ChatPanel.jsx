@@ -193,14 +193,6 @@ function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, hand
         <Text style={styles.sub}>Draw any field · Ask in plain language · Real satellite data</Text>
       </View>
 
-      {/* Source badges */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        style={styles.rowScroll} contentContainerStyle={styles.rowContent}>
-        {['🛰 Sentinel-2', '🌤 Open-Meteo', '🗺 OpenTopo', '🦋 Natura 2000'].map(b => (
-          <View key={b} style={styles.badge}><Text style={styles.badgeText}>{b}</Text></View>
-        ))}
-      </ScrollView>
-
       {/* Chips */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         style={styles.rowScroll} contentContainerStyle={[styles.rowContent, { borderBottomWidth: 1, borderBottomColor: Colors.border }]}>
@@ -293,8 +285,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  badge:     { paddingHorizontal: 9, paddingVertical: 3, backgroundColor: Colors.bgOverlay, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
-  badgeText: { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
   chip:      { paddingHorizontal: 11, paddingVertical: 5, backgroundColor: Colors.bgElevated, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
   chipText:  { fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary },
 

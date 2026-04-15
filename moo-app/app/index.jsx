@@ -226,15 +226,16 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { minHeight: 0 } }),
   },
 
-  // Desktop chat sidebar
+  // Desktop chat sidebar — fixed width, never grows
   chatSectionDesktop: {
+    flex: 0,
     width: CHAT_WIDTH,
     flexShrink: 0,
     borderLeftWidth: 1,
     borderLeftColor: Colors.border,
   },
 
-  // Mobile chat — takes full height when visible
+  // Mobile chat — flex:1 on mobile, but flex:none on desktop so fixed width wins
   chatSection: {
     flex: 1,
     backgroundColor: Colors.bgSurface,
