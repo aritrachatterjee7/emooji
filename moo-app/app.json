@@ -4,7 +4,7 @@
     "slug": "emooji",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/icons/icon-1024.png",
+    "icon": "./public/icon-1024.png",
     "userInterfaceStyle": "dark",
     "scheme": "emooji",
     "splash": {
@@ -26,7 +26,7 @@
 
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icons/adaptive-icon.png",
+        "foregroundImage": "./public/adaptive-icon.png",
         "backgroundColor": "#07090e"
       },
       "package": "com.emooji.app",
@@ -45,7 +45,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/icons/icon-192.png",
+      "favicon": "./public/icon-192.png",
       "name": "eMooJI — Field Intelligence",
       "shortName": "eMooJI",
       "description": "Draw any field in Europe. Get real satellite insights instantly.",
@@ -65,7 +65,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#07090e",
-          "image": "./assets/icons/icon-192.png",
+          "image": "./public/icon-192.png",
           "resizeMode": "contain"
         }
       ]
