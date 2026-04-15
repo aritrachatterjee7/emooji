@@ -1,0 +1,23 @@
+{
+  "name": "eMooJI — Field Intelligence",
+  "short_name": "eMooJI",
+  "description": "Draw any field in Europe. Get real satellite insights instantly.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#00e676",
+  "background_color": "#07090e",
+  "icons": [
+    {
+      "src": "/assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/icons/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}
