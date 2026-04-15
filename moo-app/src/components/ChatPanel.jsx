@@ -7,17 +7,17 @@ import {
 import { Colors, Fonts, Radius, Spacing } from '../constants/tokens';
 import { parseMarkdownNative, parseInline } from '../utils/markdown';
 
-const CHIPS = [
-  { emoji: '🌿', label: 'Veg health',   prompt: 'Show vegetation health and slope suitability for grazing in this field.' },
-  { emoji: '🌡', label: 'Heat stress',  prompt: 'Which pastures are most vulnerable to heat stress this week?' },
-  { emoji: '⛰',  label: 'Erosion risk', prompt: "Find areas with highest erosion risk after last week's rainfall." },
-  { emoji: '🦋', label: 'Natura 2000',  prompt: 'Which parcels overlap with Natura 2000 zones?' },
-  { emoji: '📈', label: 'NDVI trend',   prompt: 'How has pasture productivity changed over the past two seasons?' },
-  { emoji: '🐄', label: 'Herd move',    prompt: 'Which parts of the farm are most suitable for moving the herd tomorrow?' },
-  { emoji: '🛰', label: 'NDVI now',     prompt: 'What is the current vegetation health (NDVI) for this area?' },
-  { emoji: '🗺',  label: 'Land cover',  prompt: 'What type of land cover is this area classified as?' },
-  { emoji: '📐', label: 'Terrain',      prompt: 'Give me a complete terrain analysis — elevation, slope and grazing suitability.' },
-];
+// const CHIPS = [
+//   { emoji: '🌿', label: 'Veg health',   prompt: 'Show vegetation health and slope suitability for grazing in this field.' },
+//   { emoji: '🌡', label: 'Heat stress',  prompt: 'Which pastures are most vulnerable to heat stress this week?' },
+//   { emoji: '⛰',  label: 'Erosion risk', prompt: "Find areas with highest erosion risk after last week's rainfall." },
+//   { emoji: '🦋', label: 'Natura 2000',  prompt: 'Which parcels overlap with Natura 2000 zones?' },
+//   { emoji: '📈', label: 'NDVI trend',   prompt: 'How has pasture productivity changed over the past two seasons?' },
+//   { emoji: '🐄', label: 'Herd move',    prompt: 'Which parts of the farm are most suitable for moving the herd tomorrow?' },
+//   { emoji: '🛰', label: 'NDVI now',     prompt: 'What is the current vegetation health (NDVI) for this area?' },
+//   { emoji: '🗺',  label: 'Land cover',  prompt: 'What type of land cover is this area classified as?' },
+//   { emoji: '📐', label: 'Terrain',      prompt: 'Give me a complete terrain analysis — elevation, slope and grazing suitability.' },
+// ];
 
 // ── Inline markdown ────────────────────────────────────────────────────────
 function InlineText({ text, style }) {
