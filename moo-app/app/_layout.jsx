@@ -3,38 +3,40 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import * as Font from 'expo-font';
+import {
+  useFonts,
+  Outfit_400Regular,
+  Outfit_500Medium,
+  Outfit_700Bold,
+} from '@expo-google-fonts/outfit';
+import {
+  JetBrainsMono_400Regular,
+  JetBrainsMono_500Medium,
+} from '@expo-google-fonts/jetbrains-mono';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-// Prevent native splash from auto-hiding — we control this ourselves
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Outfit_400Regular,
+    Outfit_500Medium,
+    Outfit_700Bold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
+  });
+
   useEffect(() => {
-    async function prepare() {
-      try {
-        await Font.loadAsync({
-          Syne_400Regular:    require('../assets/fonts/Syne-Regular.ttf'),
-          Syne_500Medium:     require('../assets/fonts/Syne-Medium.ttf'),
-          Syne_700Bold:       require('../assets/fonts/Syne-Bold.ttf'),
-          Syne_800ExtraBold:  require('../assets/fonts/Syne-ExtraBold.ttf'),
-          DMMono_400Regular:  require('../assets/fonts/DMMono-Regular.ttf'),
-          DMMono_500Medium:   require('../assets/fonts/DMMono-Medium.ttf'),
-        });
-      } catch (e) {
-        console.warn('Font load error:', e);
-      } finally {
-        await SplashScreen.hideAsync();
-      }
-    }
-    prepare();
-  }, []);
+    if (fontsLoaded) SplashScreen.hideAsync();
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style="light" backgroundColor="#080c10" translucent />
+        <StatusBar style="light" backgroundColor="#07090e" translucent />
         <Stack screenOptions={{ headerShown: false, animation: 'none' }}>
           <Stack.Screen name="index" />
         </Stack>

@@ -1,51 +1,51 @@
 // src/constants/tokens.js
-// Shared design tokens — used in both StyleSheet (native) and inline web styles
 
 export const Colors = {
-  bgBase:      '#080c10',
-  bgSurface:   '#0d1520',
-  bgElevated:  '#111d2e',
-  bgOverlay:   '#162035',
-  bgGlass:     'rgba(13,21,32,0.88)',
+  bgBase:      '#07090e',
+  bgSurface:   '#0b1018',
+  bgElevated:  '#0f1822',
+  bgOverlay:   '#141f2e',
+  bgGlass:     'rgba(11,16,24,0.92)',
 
-  green:       '#0bdb6e',
-  greenMid:    '#08b558',
-  greenDeep:   '#066b35',
-  greenGlow:   'rgba(11,219,110,0.18)',
-  greenTrace:  'rgba(11,219,110,0.06)',
-  greenBorder: 'rgba(11,219,110,0.25)',
+  green:       '#00e676',
+  greenMid:    '#00c462',
+  greenDeep:   '#00954a',
+  greenGlow:   'rgba(0,230,118,0.15)',
+  greenTrace:  'rgba(0,230,118,0.07)',
+  greenBorder: 'rgba(0,230,118,0.22)',
 
-  textPrimary:   '#e8f0fe',
-  textSecondary: '#7a9abf',
-  textMuted:     '#3a5070',
-  textDisabled:  '#243040',
+  textPrimary:   '#eef2ff',
+  textSecondary: '#6e8caa',
+  textMuted:     '#334455',
+  textDisabled:  '#1e2d3d',
 
-  border:        'rgba(255,255,255,0.07)',
-  borderMid:     'rgba(255,255,255,0.12)',
-  borderStrong:  'rgba(255,255,255,0.18)',
+  border:        'rgba(255,255,255,0.055)',
+  borderMid:     'rgba(255,255,255,0.10)',
+  borderStrong:  'rgba(255,255,255,0.16)',
 
-  danger:  '#f04f4f',
-  warning: '#f0a040',
-  info:    '#4090f0',
+  danger:  '#ff4f4f',
+  warning: '#ffaa33',
+  info:    '#3d9eff',
 
-  bubbleUser: '#1a3a6e',
-  bubbleAsst: '#0d1520',
+  bubbleUser: '#0f2244',
+  bubbleAsst: '#0b1018',
 };
 
+// Expo font keys — must match names loaded in _layout.jsx
 export const Fonts = {
-  display: 'Syne_700Bold',
-  displayBold: 'Syne_800ExtraBold',
-  mono:    'DMMono_400Regular',
-  monoMedium: 'DMMono_500Medium',
-  body:    'Syne_400Regular',
-  bodyMedium: 'Syne_500Medium',
+  display:      'Outfit_700Bold',
+  displayBold:  'Outfit_700Bold',
+  body:         'Outfit_400Regular',
+  bodyMedium:   'Outfit_500Medium',
+  mono:         'JetBrainsMono_400Regular',
+  monoMedium:   'JetBrainsMono_500Medium',
 };
 
 export const Radius = {
-  sm: 6,
-  md: 10,
-  lg: 16,
-  xl: 22,
+  sm:   5,
+  md:   9,
+  lg:   14,
+  xl:   20,
   full: 9999,
 };
 
@@ -58,6 +58,6 @@ export const Spacing = {
   xxl: 32,
 };
 
-export const NAV_HEIGHT        = 54;
-export const BOTTOM_NAV_HEIGHT = 62;
-export const CHAT_WIDTH        = 420; // desktop only
+export const NAV_HEIGHT        = 52;
+export const BOTTOM_NAV_HEIGHT = 58;
+export const CHAT_WIDTH        = 400;

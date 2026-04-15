@@ -1,23 +1,23 @@
-// app/index.jsx  — Main screen, all platforms
+// app/index.jsx
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Platform, useWindowDimensions,
-  Animated, TouchableOpacity,
+  View, Text, StyleSheet, Platform, useWindowDimensions, Animated,
 } from 'react-native';
-import { useJackDaw } from '../src/hooks/useJackDaw';
-import { TopNav }     from '../src/components/TopNav';
-import { BottomNav }  from '../src/components/BottomNav';
-import { ChatPanel }  from '../src/components/ChatPanel';
-import { MapToolbar } from '../src/components/MapToolbar';
-import { FieldStatsBar } from '../src/components/FieldStatsBar';
-import FieldMap       from '../src/components/FieldMap'; // resolves .web.jsx or .native.jsx
-import { Colors, Fonts, Radius, Spacing, CHAT_WIDTH } from '../src/constants/tokens';
+import { useJackDaw }       from '../src/hooks/useJackDaw';
+import { TopNav }           from '../src/components/TopNav';
+import { BottomNav }        from '../src/components/BottomNav';
+import { ChatPanel }        from '../src/components/ChatPanel';
+import { MapToolbar }       from '../src/components/MapToolbar';
+import { FieldStatsBar }    from '../src/components/FieldStatsBar';
+import FieldMap             from '../src/components/FieldMap';
+import { Colors, Fonts, Spacing, CHAT_WIDTH } from '../src/constants/tokens';
 
 const MOBILE_BREAKPOINT = 860;
 
-function now() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+function now() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
-// ── Animated splash overlay ────────────────────────────────────────────────
 function AppSplash({ visible, progress, status }) {
   const opacity = useRef(new Animated.Value(1)).current;
 
@@ -27,12 +27,15 @@ function AppSplash({ visible, progress, status }) {
     }
   }, [visible]);
 
-  if (!visible && opacity.__getValue() === 0) return null;
-
   return (
-    <Animated.View style={[styles.splash, { opacity }]} pointerEvents={visible ? 'auto' : 'none'}>
+    <Animated.View
+      style={[styles.splash, { opacity }]}
+      pointerEvents={visible ? 'auto' : 'none'}
+    >
       <Text style={styles.splashCow}>🐄</Text>
-      <Text style={styles.splashWord}>eMoo<Text style={styles.splashGreen}>JI</Text></Text>
+      <Text style={styles.splashWord}>
+        eMoo<Text style={styles.splashGreen}>JI</Text>
+      </Text>
       <Text style={styles.splashSub}>FIELD INTELLIGENCE · JACKDAW GEOAI</Text>
       <View style={styles.splashTrack}>
         <View style={[styles.splashBar, { width: `${progress}%` }]} />
@@ -46,34 +49,27 @@ export default function MainScreen() {
   const { width }  = useWindowDimensions();
   const isMobile   = width < MOBILE_BREAKPOINT;
 
-  // ── Splash ─────────────────────────────────────────────────────────────
   const [splashVisible,  setSplashVisible]  = useState(true);
   const [splashProgress, setSplashProgress] = useState(0);
   const [splashStatus,   setSplashStatus]   = useState('Initialising…');
 
-  // ── Field ───────────────────────────────────────────────────────────────
   const [polygon,    setPolygon]    = useState(null);
   const [fieldStats, setFieldStats] = useState(null);
   const [mapLayer,   setMapLayer]   = useState('street');
-  const [drawMode,   setDrawMode]   = useState(null); // 'polygon' | 'rectangle' | null
-  const [demoTrigger, setDemoTrigger] = useState(null);
+  const [drawMode,   setDrawMode]   = useState(null);
 
-  // ── Chat ────────────────────────────────────────────────────────────────
   const [messages,    setMessages]    = useState([]);
   const [isLoading,   setIsLoading]   = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // ── Navigation ──────────────────────────────────────────────────────────
   const [activePanel, setActivePanel] = useState('map');
 
-  // ── Install (web only) ──────────────────────────────────────────────────
-  const [installPrompt,    setInstallPrompt]    = useState(null);
-  const [showInstallBtn,   setShowInstallBtn]   = useState(false);
+  const [installPrompt,  setInstallPrompt]  = useState(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
 
-  // ── JackDaw ─────────────────────────────────────────────────────────────
   const { connStatus, init, sendMessage, clearHistory } = useJackDaw();
 
-  // ── Init ────────────────────────────────────────────────────────────────
+  // Init
   useEffect(() => {
     init((pct, label) => {
       setSplashProgress(pct);
@@ -81,32 +77,35 @@ export default function MainScreen() {
     }).finally(() => setSplashVisible(false));
   }, [init]);
 
-  // Web: PWA install prompt
+  // PWA install (web only)
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); setShowInstallBtn(true); };
+    const handler = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstallBtn(true);
+    };
     window.addEventListener('beforeinstallprompt', handler);
-    window.addEventListener('appinstalled', () => { setShowInstallBtn(false); setInstallPrompt(null); });
+    window.addEventListener('appinstalled', () => {
+      setShowInstallBtn(false);
+      setInstallPrompt(null);
+    });
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // ── Callbacks ────────────────────────────────────────────────────────────
   const handleFieldDrawn = useCallback((poly, stats) => {
     setPolygon(poly);
     setFieldStats(stats);
     if (isMobile) setUnreadCount(c => c + 1);
   }, [isMobile]);
 
-  const handleFieldCleared = useCallback(() => { setPolygon(null); setFieldStats(null); }, []);
+  const handleFieldCleared = useCallback(() => {
+    setPolygon(null);
+    setFieldStats(null);
+  }, []);
 
-  const appendMsg = (role, content) => setMessages(prev => [...prev, { role, content, time: now() }]);
-
-  const handleDemoLoaded = useCallback(() => {
-    appendMsg('assistant',
-      '**Lichtwiese demo paddocks loaded.**\n\nLand A (4.2 ha), Land B (6.1 ha, selected), and Land C (3.8 ha) are now on the map near Darmstadt, Germany.\n\nAsk me anything about Land B, or tap a quick-analysis chip.'
-    );
-    if (isMobile) switchPanel('chat');
-  }, [isMobile]);
+  const appendMsg = (role, content) =>
+    setMessages(prev => [...prev, { role, content, time: now() }]);
 
   const handleSend = useCallback(async (text) => {
     appendMsg('user', text);
@@ -122,7 +121,11 @@ export default function MainScreen() {
     }
   }, [sendMessage, polygon, isMobile, activePanel]);
 
-  const handleClearChat = useCallback(() => { setMessages([]); setUnreadCount(0); clearHistory(); }, [clearHistory]);
+  const handleClearChat = useCallback(() => {
+    setMessages([]);
+    setUnreadCount(0);
+    clearHistory();
+  }, [clearHistory]);
 
   const switchPanel = useCallback((panel) => {
     setActivePanel(panel);
@@ -140,65 +143,8 @@ export default function MainScreen() {
     if (outcome === 'accepted') { setShowInstallBtn(false); setInstallPrompt(null); }
   };
 
-  // Demo: pass a trigger function down to the map
-  const handleDemo = useCallback(() => {
-    // Web map handles demo via its own internal loadDemo
-    // We signal it by setting a new trigger object (referential change = effect fires)
-    setDemoTrigger({ ts: Date.now() });
-  }, []);
-
-  // ── Map panel ────────────────────────────────────────────────────────────
   const mapVisible  = !isMobile || activePanel === 'map';
   const chatVisible = !isMobile || activePanel === 'chat';
-
-  const MapSection = (
-    <View style={[styles.mapSection, isMobile && !mapVisible && styles.hidden]}>
-      <MapToolbar
-        onPolygon={() => setDrawMode('polygon')}
-        onRectangle={() => setDrawMode('rectangle')}
-        onDemo={handleDemo}
-        onClear={() => { handleFieldCleared(); setDrawMode(null); }}
-        onLayerSat={() => setMapLayer('satellite')}
-        onLayerStreet={() => setMapLayer('street')}
-        mapLayer={mapLayer}
-        drawMode={drawMode}
-        fieldStats={fieldStats}
-      />
-      <View style={styles.mapContainer}>
-        <FieldMap
-          onFieldDrawn={handleFieldDrawn}
-          onFieldCleared={handleFieldCleared}
-          mapLayer={mapLayer}
-          drawMode={drawMode}
-          onDrawModeChange={setDrawMode}
-          onDemoTrigger={demoTrigger ? (drawnRef, mapRef) => {
-            // Web demo loader — fetch lichtwiese.geojson
-            fetch('/lichtwiese.geojson')
-              .then(r => r.json())
-              .then(data => {
-                // This only runs in the web version — native handles it differently
-                handleDemoLoaded();
-              })
-              .catch(err => appendMsg('assistant', `Demo load failed: ${err.message}`));
-          } : null}
-        />
-        <FieldStatsBar stats={fieldStats} />
-      </View>
-    </View>
-  );
-
-  const ChatSection = (
-    <View style={[styles.chatSection, isMobile && !chatVisible && styles.hidden]}>
-      <ChatPanel
-        messages={messages}
-        isLoading={isLoading}
-        onSend={handleSend}
-        onClearChat={handleClearChat}
-        onChipClick={handleChipClick}
-        hasField={!!polygon}
-      />
-    </View>
-  );
 
   return (
     <View style={styles.root}>
@@ -210,8 +156,41 @@ export default function MainScreen() {
       />
 
       <View style={[styles.workspace, !isMobile && styles.workspaceDesktop]}>
-        {MapSection}
-        {ChatSection}
+        {/* Map section */}
+        <View style={[styles.mapSection, isMobile && !mapVisible && styles.hidden]}>
+          <MapToolbar
+            onPolygon={() => setDrawMode('polygon')}
+            onRectangle={() => setDrawMode('rectangle')}
+            onClear={() => { handleFieldCleared(); setDrawMode(null); }}
+            onLayerSat={() => setMapLayer('satellite')}
+            onLayerStreet={() => setMapLayer('street')}
+            mapLayer={mapLayer}
+            drawMode={drawMode}
+            fieldStats={fieldStats}
+          />
+          <View style={styles.mapContainer}>
+            <FieldMap
+              onFieldDrawn={handleFieldDrawn}
+              onFieldCleared={handleFieldCleared}
+              mapLayer={mapLayer}
+              drawMode={drawMode}
+              onDrawModeChange={setDrawMode}
+            />
+            <FieldStatsBar stats={fieldStats} />
+          </View>
+        </View>
+
+        {/* Chat section */}
+        <View style={[styles.chatSection, isMobile && !chatVisible && styles.hidden]}>
+          <ChatPanel
+            messages={messages}
+            isLoading={isLoading}
+            onSend={handleSend}
+            onClearChat={handleClearChat}
+            onChipClick={handleChipClick}
+            hasField={!!polygon}
+          />
+        </View>
       </View>
 
       {isMobile && (
@@ -222,7 +201,11 @@ export default function MainScreen() {
         />
       )}
 
-      <AppSplash visible={splashVisible} progress={splashProgress} status={splashStatus} />
+      <AppSplash
+        visible={splashVisible}
+        progress={splashProgress}
+        status={splashStatus}
+      />
     </View>
   );
 }
@@ -232,18 +215,18 @@ const styles = StyleSheet.create({
   workspace: { flex: 1 },
   workspaceDesktop: { flexDirection: 'row' },
 
-  mapSection:  { flex: 1, backgroundColor: Colors.bgBase },
+  mapSection: { flex: 1, backgroundColor: Colors.bgBase },
   chatSection: {
     ...Platform.select({
-      web: { width: CHAT_WIDTH, flexShrink: 0 },
+      web:     { width: CHAT_WIDTH, flexShrink: 0 },
       default: { flex: 1 },
     }),
     backgroundColor: Colors.bgSurface,
     borderLeftWidth: 1,
     borderLeftColor: Colors.border,
   },
-  hidden:      { display: 'none' },
 
+  hidden:       { display: 'none' },
   mapContainer: { flex: 1, position: 'relative' },
 
   // Splash
@@ -253,13 +236,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgBase,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 9,
   },
-  splashCow:    { fontSize: 52 },
-  splashWord:   { fontFamily: Fonts.displayBold, fontSize: 32, color: Colors.textPrimary, letterSpacing: -1 },
+  splashCow:    { fontSize: 48 },
+  splashWord:   { fontFamily: Fonts.displayBold, fontSize: 30, color: Colors.textPrimary, letterSpacing: -1 },
   splashGreen:  { color: Colors.green },
-  splashSub:    { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted, letterSpacing: 1.5, marginTop: 4 },
-  splashTrack:  { width: 160, height: 2, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 1, marginTop: 20, overflow: 'hidden' },
-  splashBar:    { height: 2, backgroundColor: Colors.green, borderRadius: 1 },
-  splashStatus: { fontFamily: Fonts.mono, fontSize: 11, color: Colors.textMuted },
+  splashSub:    { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, letterSpacing: 1.5, marginTop: 3 },
+  splashTrack:  { width: 140, height: 1.5, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 1, marginTop: 18, overflow: 'hidden' },
+  splashBar:    { height: 1.5, backgroundColor: Colors.green, borderRadius: 1 },
+  splashStatus: { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
 });
