@@ -2,14 +2,16 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
-// Support Leaflet CSS imports on web
-config.resolver.assetExts.push('css');
-
-// Ensure platform-specific files resolve correctly
-// .native.jsx wins on iOS/Android, .web.jsx wins on web
-config.resolver.sourceExts = [
-  'native.jsx', 'native.js', 'native.ts', 'native.tsx',
-  ...config.resolver.sourceExts,
-];
+// On web, swap react-native-maps for a no-op stub
+// so the native JSX never gets loaded by Node during expo export
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === 'web' && moduleName === 'react-native-maps') {
+    return {
+      filePath: require.resolve('./src/stubs/MapStub.web.js'),
+      type: 'sourceFile',
+    };
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
 
 module.exports = config;

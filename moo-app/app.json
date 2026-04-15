@@ -10,8 +10,9 @@
     "splash": {
       "backgroundColor": "#080c10"
     },
-    "assetBundlePatterns": ["**/*"],
-
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.emooji.app",
@@ -20,10 +21,9 @@
       },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "eMooJI uses your location to centre the map on your farm.",
-        "NSLocationAlwaysUsageDescription":    "eMooJI uses your location to centre the map on your farm."
+        "NSLocationAlwaysUsageDescription": "eMooJI uses your location to centre the map on your farm."
       }
     },
-
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icons/adaptive-icon.png",
@@ -41,7 +41,6 @@
         "android.permission.INTERNET"
       ]
     },
-
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -57,17 +56,16 @@
         "enabled": true
       }
     },
-
     "plugins": [
       "expo-router",
       "expo-font",
       [
         "expo-splash-screen",
-        { "backgroundColor": "#080c10", "image": "./assets/icons/icon-192.png", "resizeMode": "contain" }
-      ],
-      [
-        "react-native-maps",
-        { "googleMapsApiKey": "YOUR_ANDROID_GOOGLE_MAPS_KEY" }
+        {
+          "backgroundColor": "#080c10",
+          "image": "./assets/icons/icon-192.png",
+          "resizeMode": "contain"
+        }
       ]
     ],
 
