@@ -10,8 +10,9 @@
     "splash": {
       "backgroundColor": "#07090e"
     },
-    "assetBundlePatterns": ["**/*"],
-
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.emooji.app",
@@ -23,7 +24,6 @@
         "NSLocationAlwaysUsageDescription": "eMooJI uses your location to centre the map on your farm."
       }
     },
-
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./public/adaptive-icon.png",
@@ -41,7 +41,6 @@
         "android.permission.INTERNET"
       ]
     },
-
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -57,7 +56,6 @@
         "viewport": "width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
       }
     },
-
     "plugins": [
       "expo-router",
       "expo-font",
@@ -70,9 +68,16 @@
         }
       ]
     ],
-
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "0a5a571b-5f13-4425-a47c-70236af57d81"
+      }
     }
   }
 }
