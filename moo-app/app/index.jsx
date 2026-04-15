@@ -23,7 +23,7 @@ function AppSplash({ visible, progress, status }) {
 
   useEffect(() => {
     if (!visible) {
-      Animated.timing(opacity, { toValue: 0, duration: 500, useNativeDriver: true }).start();
+      Animated.timing(opacity, { toValue: 0, duration: 500, useNativeDriver: Platform.OS !== 'web' }).start();
     }
   }, [visible]);
 
