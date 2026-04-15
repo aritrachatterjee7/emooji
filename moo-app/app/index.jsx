@@ -120,10 +120,6 @@ export default function MainScreen() {
     if (panel === 'chat') setUnreadCount(0);
   }, []);
 
-  const handleChipClick = useCallback(() => {
-    if (isMobile) switchPanel('chat');
-  }, [isMobile, switchPanel]);
-
   const handleInstall = async () => {
     if (!installPrompt) return;
     installPrompt.prompt();
@@ -184,7 +180,6 @@ export default function MainScreen() {
             isLoading={isLoading}
             onSend={handleSend}
             onClearChat={handleClearChat}
-            onChipClick={handleChipClick}
             hasField={!!polygon}
           />
         </View>

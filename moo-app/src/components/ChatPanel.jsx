@@ -7,17 +7,7 @@ import {
 import { Colors, Fonts, Radius, Spacing } from '../constants/tokens';
 import { parseMarkdownNative, parseInline } from '../utils/markdown';
 
-// const CHIPS = [
-//   { emoji: '🌿', label: 'Veg health',   prompt: 'Show vegetation health and slope suitability for grazing in this field.' },
-//   { emoji: '🌡', label: 'Heat stress',  prompt: 'Which pastures are most vulnerable to heat stress this week?' },
-//   { emoji: '⛰',  label: 'Erosion risk', prompt: "Find areas with highest erosion risk after last week's rainfall." },
-//   { emoji: '🦋', label: 'Natura 2000',  prompt: 'Which parcels overlap with Natura 2000 zones?' },
-//   { emoji: '📈', label: 'NDVI trend',   prompt: 'How has pasture productivity changed over the past two seasons?' },
-//   { emoji: '🐄', label: 'Herd move',    prompt: 'Which parts of the farm are most suitable for moving the herd tomorrow?' },
-//   { emoji: '🛰', label: 'NDVI now',     prompt: 'What is the current vegetation health (NDVI) for this area?' },
-//   { emoji: '🗺',  label: 'Land cover',  prompt: 'What type of land cover is this area classified as?' },
-//   { emoji: '📐', label: 'Terrain',      prompt: 'Give me a complete terrain analysis — elevation, slope and grazing suitability.' },
-// ];
+
 
 // ── Inline markdown ────────────────────────────────────────────────────────
 function InlineText({ text, style }) {
@@ -118,7 +108,7 @@ function WelcomeMessage() {
 }
 
 // ── Main export ────────────────────────────────────────────────────────────
-export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClick }) {
+export function ChatPanel({ messages, isLoading, onSend, onClearChat }) {
   const [text, setText] = useState('');
   const scrollRef = useRef(null);
 
@@ -138,11 +128,6 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
     setText('');
   }, [text, isLoading, onSend]);
 
-  const handleChip = (prompt) => {
-    setText(prompt);
-    onChipClick?.();
-  };
-
   const handleKey = Platform.OS === 'web'
     ? (e) => { if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) { e.preventDefault(); handleSend(); } }
     : undefined;
@@ -156,7 +141,7 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
           text={text} setText={setText}
           messages={messages} isLoading={isLoading}
           scrollRef={scrollRef}
-          handleSend={handleSend} handleChip={handleChip} handleKey={handleKey}
+          handleSend={handleSend} handleKey={handleKey}
           onClearChat={onClearChat}
         />
       </View>
@@ -170,7 +155,7 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
           text={text} setText={setText}
           messages={messages} isLoading={isLoading}
           scrollRef={scrollRef}
-          handleSend={handleSend} handleChip={handleChip} handleKey={handleKey}
+          handleSend={handleSend} handleKey={handleKey}
           onClearChat={onClearChat}
         />
       </KeyboardAvoidingView>
@@ -179,7 +164,7 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
 }
 
 // Inner layout — separated so it's reused by both web View and native KAV
-function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, handleChip, handleKey, onClearChat }) {
+function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, handleKey, onClearChat }) {
   return (
     <>
       {/* Header — never scrolls */}
@@ -193,15 +178,7 @@ function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, hand
         <Text style={styles.sub}>Draw any field · Ask in plain language · Real satellite data</Text>
       </View>
 
-      {/* Chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        style={styles.rowScroll} contentContainerStyle={[styles.rowContent, { borderBottomWidth: 1, borderBottomColor: Colors.border }]}>
-        {CHIPS.map(c => (
-          <TouchableOpacity key={c.label} style={styles.chip} onPress={() => handleChip(c.prompt)} activeOpacity={0.7}>
-            <Text style={styles.chipText}>{c.emoji} {c.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+
 
       {/* Messages — THIS is the key fix:
           flex:1 + minHeight:0 forces it to fill remaining space on web.
@@ -285,9 +262,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  chip:      { paddingHorizontal: 11, paddingVertical: 5, backgroundColor: Colors.bgElevated, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
-  chipText:  { fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary },
-
   // Feed — THE critical fix for web
   feed: {
     flex: 1,
