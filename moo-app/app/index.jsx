@@ -33,9 +33,7 @@ function AppSplash({ visible, progress, status }) {
       pointerEvents={visible ? 'auto' : 'none'}
     >
       <Text style={styles.splashCow}>🐄</Text>
-      <Text style={styles.splashWord}>
-        eMoo<Text style={styles.splashGreen}>JI</Text>
-      </Text>
+      <Text style={styles.splashWord}>eMoo<Text style={styles.splashGreen}>JI</Text></Text>
       <Text style={styles.splashSub}>FIELD INTELLIGENCE · JACKDAW GEOAI</Text>
       <View style={styles.splashTrack}>
         <View style={[styles.splashBar, { width: `${progress}%` }]} />
@@ -61,7 +59,6 @@ export default function MainScreen() {
   const [messages,    setMessages]    = useState([]);
   const [isLoading,   setIsLoading]   = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-
   const [activePanel, setActivePanel] = useState('map');
 
   const [installPrompt,  setInstallPrompt]  = useState(null);
@@ -69,7 +66,6 @@ export default function MainScreen() {
 
   const { connStatus, init, sendMessage, clearHistory } = useJackDaw();
 
-  // Init
   useEffect(() => {
     init((pct, label) => {
       setSplashProgress(pct);
@@ -77,19 +73,11 @@ export default function MainScreen() {
     }).finally(() => setSplashVisible(false));
   }, [init]);
 
-  // PWA install (web only)
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const handler = (e) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-      setShowInstallBtn(true);
-    };
+    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); setShowInstallBtn(true); };
     window.addEventListener('beforeinstallprompt', handler);
-    window.addEventListener('appinstalled', () => {
-      setShowInstallBtn(false);
-      setInstallPrompt(null);
-    });
+    window.addEventListener('appinstalled', () => { setShowInstallBtn(false); setInstallPrompt(null); });
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
@@ -155,9 +143,14 @@ export default function MainScreen() {
         onInstall={handleInstall}
       />
 
+      {/* Workspace — row on desktop, stacked on mobile */}
       <View style={[styles.workspace, !isMobile && styles.workspaceDesktop]}>
+
         {/* Map section */}
-        <View style={[styles.mapSection, isMobile && !mapVisible && styles.hidden]}>
+        <View style={[
+          styles.mapSection,
+          isMobile && !mapVisible && styles.hidden,
+        ]}>
           <MapToolbar
             onPolygon={() => setDrawMode('polygon')}
             onRectangle={() => setDrawMode('rectangle')}
@@ -180,8 +173,12 @@ export default function MainScreen() {
           </View>
         </View>
 
-        {/* Chat section */}
-        <View style={[styles.chatSection, isMobile && !chatVisible && styles.hidden]}>
+        {/* Chat section — key fix: explicit flex:1 + minHeight:0 on web */}
+        <View style={[
+          styles.chatSection,
+          !isMobile && styles.chatSectionDesktop,
+          isMobile && !chatVisible && styles.hidden,
+        ]}>
           <ChatPanel
             messages={messages}
             isLoading={isLoading}
@@ -201,29 +198,47 @@ export default function MainScreen() {
         />
       )}
 
-      <AppSplash
-        visible={splashVisible}
-        progress={splashProgress}
-        status={splashStatus}
-      />
+      <AppSplash visible={splashVisible} progress={splashProgress} status={splashStatus} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root:      { flex: 1, backgroundColor: Colors.bgBase },
-  workspace: { flex: 1 },
-  workspaceDesktop: { flexDirection: 'row' },
+  root: {
+    flex: 1,
+    backgroundColor: Colors.bgBase,
+    // On web, ensure root fills the full viewport height
+    ...Platform.select({ web: { height: '100vh', overflow: 'hidden' } }),
+  },
 
-  mapSection: { flex: 1, backgroundColor: Colors.bgBase },
-  chatSection: {
-    ...Platform.select({
-      web:     { width: CHAT_WIDTH, flexShrink: 0 },
-      default: { flex: 1 },
-    }),
-    backgroundColor: Colors.bgSurface,
+  workspace: {
+    flex: 1,
+    // minHeight:0 is the web fix — without it flex children can overflow
+    ...Platform.select({ web: { minHeight: 0, overflow: 'hidden' } }),
+  },
+  workspaceDesktop: {
+    flexDirection: 'row',
+  },
+
+  mapSection: {
+    flex: 1,
+    backgroundColor: Colors.bgBase,
+    ...Platform.select({ web: { minHeight: 0 } }),
+  },
+
+  // Desktop chat sidebar
+  chatSectionDesktop: {
+    width: CHAT_WIDTH,
+    flexShrink: 0,
     borderLeftWidth: 1,
     borderLeftColor: Colors.border,
+  },
+
+  // Mobile chat — takes full height when visible
+  chatSection: {
+    flex: 1,
+    backgroundColor: Colors.bgSurface,
+    ...Platform.select({ web: { minHeight: 0 } }),
   },
 
   hidden:       { display: 'none' },

@@ -8,11 +8,10 @@
     "userInterfaceStyle": "dark",
     "scheme": "emooji",
     "splash": {
-      "backgroundColor": "#080c10"
+      "backgroundColor": "#07090e"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.emooji.app",
@@ -24,10 +23,11 @@
         "NSLocationAlwaysUsageDescription": "eMooJI uses your location to centre the map on your farm."
       }
     },
+
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icons/adaptive-icon.png",
-        "backgroundColor": "#080c10"
+        "backgroundColor": "#07090e"
       },
       "package": "com.emooji.app",
       "config": {
@@ -41,6 +41,7 @@
         "android.permission.INTERNET"
       ]
     },
+
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -48,21 +49,22 @@
       "name": "eMooJI — Field Intelligence",
       "shortName": "eMooJI",
       "description": "Draw any field in Europe. Get real satellite insights instantly.",
-      "themeColor": "#0bdb6e",
-      "backgroundColor": "#080c10",
+      "themeColor": "#00e676",
+      "backgroundColor": "#07090e",
       "display": "standalone",
       "orientation": "any",
-      "pwa": {
-        "enabled": true
+      "meta": {
+        "viewport": "width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
       }
     },
+
     "plugins": [
       "expo-router",
       "expo-font",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#080c10",
+          "backgroundColor": "#07090e",
           "image": "./assets/icons/icon-192.png",
           "resizeMode": "contain"
         }

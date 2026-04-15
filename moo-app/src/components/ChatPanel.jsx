@@ -10,7 +10,7 @@ import { parseMarkdownNative, parseInline } from '../utils/markdown';
 const CHIPS = [
   { emoji: '🌿', label: 'Veg health',   prompt: 'Show vegetation health and slope suitability for grazing in this field.' },
   { emoji: '🌡', label: 'Heat stress',  prompt: 'Which pastures are most vulnerable to heat stress this week?' },
-  { emoji: '⛰',  label: 'Erosion risk', prompt: 'Find areas with highest erosion risk after last week\'s rainfall.' },
+  { emoji: '⛰',  label: 'Erosion risk', prompt: "Find areas with highest erosion risk after last week's rainfall." },
   { emoji: '🦋', label: 'Natura 2000',  prompt: 'Which parcels overlap with Natura 2000 zones?' },
   { emoji: '📈', label: 'NDVI trend',   prompt: 'How has pasture productivity changed over the past two seasons?' },
   { emoji: '🐄', label: 'Herd move',    prompt: 'Which parts of the farm are most suitable for moving the herd tomorrow?' },
@@ -19,12 +19,17 @@ const CHIPS = [
   { emoji: '📐', label: 'Terrain',      prompt: 'Give me a complete terrain analysis — elevation, slope and grazing suitability.' },
 ];
 
+// ── Inline markdown ────────────────────────────────────────────────────────
 function InlineText({ text, style }) {
   const parts = parseInline(text);
   return (
     <Text style={style}>
       {parts.map((p, i) => (
-        <Text key={i} style={[p.bold && styles.bold, p.italic && styles.italic, p.code && styles.inlineCode]}>
+        <Text key={i} style={[
+          p.bold   && styles.bold,
+          p.italic && styles.italic,
+          p.code   && styles.inlineCode,
+        ]}>
           {p.text}
         </Text>
       ))}
@@ -38,9 +43,9 @@ function MarkdownSegment({ seg }) {
   if (seg.type === 'h3')      return <InlineText text={seg.text} style={styles.mdH3} />;
   if (seg.type === 'code')    return <Text style={styles.mdCode}>{seg.text}</Text>;
   if (seg.type === 'bullet')  return (
-    <View style={styles.mdBulletRow}>
-      <Text style={styles.mdBulletDot}>·</Text>
-      <InlineText text={seg.text} style={styles.mdBulletText} />
+    <View style={styles.bulletRow}>
+      <Text style={styles.bulletDot}>·</Text>
+      <InlineText text={seg.text} style={styles.mdPara} />
     </View>
   );
   return <InlineText text={seg.text} style={styles.mdPara} />;
@@ -56,51 +61,54 @@ function BubbleContent({ content }) {
   );
 }
 
+// ── Typing indicator ───────────────────────────────────────────────────────
 function TypingIndicator() {
   return (
     <View style={styles.msgRow}>
-      <View style={styles.avatar}><Text style={styles.avatarText}>🐄</Text></View>
-      <View style={[styles.bubble, styles.bubbleAsst, { paddingVertical: 14, paddingHorizontal: 16 }]}>
-        <View style={styles.typing}>
-          <View style={[styles.typingDot, { opacity: 1 }]} />
-          <View style={[styles.typingDot, { opacity: 0.6 }]} />
-          <View style={[styles.typingDot, { opacity: 0.3 }]} />
+      <View style={styles.avatar}><Text style={styles.avatarEmoji}>🐄</Text></View>
+      <View style={[styles.bubble, styles.bubbleAsst]}>
+        <View style={styles.dots}>
+          <View style={[styles.dot, { opacity: 1.0 }]} />
+          <View style={[styles.dot, { opacity: 0.6 }]} />
+          <View style={[styles.dot, { opacity: 0.3 }]} />
         </View>
       </View>
     </View>
   );
 }
 
+// ── Single message ─────────────────────────────────────────────────────────
 function ChatMessage({ item }) {
   const isUser = item.role === 'user';
   return (
     <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
-      {!isUser && <View style={styles.avatar}><Text style={styles.avatarText}>🐄</Text></View>}
+      {!isUser && <View style={styles.avatar}><Text style={styles.avatarEmoji}>🐄</Text></View>}
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAsst]}>
         <BubbleContent content={item.content} />
         <Text style={styles.msgTime}>{item.time}</Text>
       </View>
-      {isUser && <View style={styles.avatar}><Text style={styles.avatarText}>👤</Text></View>}
+      {isUser && <View style={styles.avatar}><Text style={styles.avatarEmoji}>👤</Text></View>}
     </View>
   );
 }
 
+// ── Welcome ────────────────────────────────────────────────────────────────
 function WelcomeMessage() {
   return (
     <View style={styles.msgRow}>
-      <View style={styles.avatar}><Text style={styles.avatarText}>🐄</Text></View>
+      <View style={styles.avatar}><Text style={styles.avatarEmoji}>🐄</Text></View>
       <View style={[styles.bubble, styles.bubbleAsst, styles.bubbleWelcome]}>
         <Text style={styles.mdPara}>
           <Text style={styles.bold}>Welcome to eMooJI.</Text>
-          {' '}I connect to real satellite databases to answer questions about any agricultural field in Europe.
+          {' '}I connect to real satellite databases to answer questions about any field in Europe.
         </Text>
         {[
           ['1', 'Tap Polygon or Rectangle and draw over any field on the map'],
           ['2', 'Ask any question — or tap a quick-analysis chip above'],
-        ].map(([num, text]) => (
-          <View key={num} style={styles.step}>
-            <View style={styles.stepNum}><Text style={styles.stepNumText}>{num}</Text></View>
-            <Text style={styles.stepText}>{text}</Text>
+        ].map(([n, t]) => (
+          <View key={n} style={styles.step}>
+            <View style={styles.stepNum}><Text style={styles.stepNumText}>{n}</Text></View>
+            <Text style={styles.stepText}>{t}</Text>
           </View>
         ))}
         <Text style={styles.msgTime}>now</Text>
@@ -109,16 +117,18 @@ function WelcomeMessage() {
   );
 }
 
+// ── Main export ────────────────────────────────────────────────────────────
 export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClick }) {
   const [text, setText] = useState('');
   const scrollRef = useRef(null);
 
-  // Scroll to bottom whenever messages change or typing indicator appears/disappears
+  // Scroll to bottom after every render that adds content
   useEffect(() => {
-    const t = setTimeout(() => {
+    // requestAnimationFrame ensures DOM has painted before we scroll
+    const raf = requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
-    }, 80);
-    return () => clearTimeout(t);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [messages.length, isLoading]);
 
   const handleSend = useCallback(() => {
@@ -133,46 +143,67 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
     onChipClick?.();
   };
 
-  return (
-    // KeyboardAvoidingView wraps everything — pushes content up when keyboard opens
-    <KeyboardAvoidingView
-      style={styles.panel}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 52 : 0}
-    >
+  const handleKey = Platform.OS === 'web'
+    ? (e) => { if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) { e.preventDefault(); handleSend(); } }
+    : undefined;
 
-      {/* Header — fixed, never scrolls */}
+  return (
+    // On web: use a plain View because KeyboardAvoidingView causes height issues in browsers
+    // On native: use KeyboardAvoidingView to push content above keyboard
+    Platform.OS === 'web' ? (
+      <View style={styles.panel}>
+        <Inner
+          text={text} setText={setText}
+          messages={messages} isLoading={isLoading}
+          scrollRef={scrollRef}
+          handleSend={handleSend} handleChip={handleChip} handleKey={handleKey}
+          onClearChat={onClearChat}
+        />
+      </View>
+    ) : (
+      <KeyboardAvoidingView
+        style={styles.panel}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={52}
+      >
+        <Inner
+          text={text} setText={setText}
+          messages={messages} isLoading={isLoading}
+          scrollRef={scrollRef}
+          handleSend={handleSend} handleChip={handleChip} handleKey={handleKey}
+          onClearChat={onClearChat}
+        />
+      </KeyboardAvoidingView>
+    )
+  );
+}
+
+// Inner layout — separated so it's reused by both web View and native KAV
+function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, handleChip, handleKey, onClearChat }) {
+  return (
+    <>
+      {/* Header — never scrolls */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Field Analysis</Text>
-          <TouchableOpacity style={styles.clearBtn} onPress={onClearChat} activeOpacity={0.7}>
+          <TouchableOpacity onPress={onClearChat} style={styles.clearBtn} activeOpacity={0.7}>
             <Text style={styles.clearBtnText}>✕</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.sub}>Draw any field · Ask in plain language · Real satellite data</Text>
       </View>
 
-      {/* Source badges — fixed horizontal scroll */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.badgesScroll}
-        contentContainerStyle={styles.badgesRow}
-      >
+      {/* Source badges */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        style={styles.rowScroll} contentContainerStyle={styles.rowContent}>
         {['🛰 Sentinel-2', '🌤 Open-Meteo', '🗺 OpenTopo', '🦋 Natura 2000'].map(b => (
-          <View key={b} style={styles.badge}>
-            <Text style={styles.badgeText}>{b}</Text>
-          </View>
+          <View key={b} style={styles.badge}><Text style={styles.badgeText}>{b}</Text></View>
         ))}
       </ScrollView>
 
-      {/* Chips — fixed horizontal scroll */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipsScroll}
-        contentContainerStyle={styles.chipsRow}
-      >
+      {/* Chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        style={styles.rowScroll} contentContainerStyle={[styles.rowContent, { borderBottomWidth: 1, borderBottomColor: Colors.border }]}>
         {CHIPS.map(c => (
           <TouchableOpacity key={c.label} style={styles.chip} onPress={() => handleChip(c.prompt)} activeOpacity={0.7}>
             <Text style={styles.chipText}>{c.emoji} {c.label}</Text>
@@ -180,27 +211,24 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
         ))}
       </ScrollView>
 
-      {/* Messages — flex:1 takes ALL remaining space between chips and input */}
+      {/* Messages — THIS is the key fix:
+          flex:1 + minHeight:0 forces it to fill remaining space on web.
+          Without minHeight:0, react-native-web ignores flex:1 on ScrollView. */}
       <ScrollView
         ref={scrollRef}
         style={styles.feed}
         contentContainerStyle={styles.feedContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        // Scroll to bottom when layout changes (new message added)
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
         <WelcomeMessage />
-        {messages.map((m, i) => (
-          <ChatMessage key={i} item={m} />
-        ))}
-        {/* Typing indicator INSIDE the scroll view — renders as a message row */}
+        {messages.map((m, i) => <ChatMessage key={i} item={m} />)}
         {isLoading && <TypingIndicator />}
-        {/* Spacer so last message isn't flush against bottom */}
-        <View style={{ height: 8 }} />
+        <View style={{ height: 12 }} />
       </ScrollView>
 
-      {/* Input — flexShrink:0 guarantees it ALWAYS stays at bottom */}
+      {/* Input — flexShrink:0 = always visible, always at bottom */}
       <View style={styles.inputArea}>
         <View style={styles.inputRow}>
           <TextInput
@@ -211,35 +239,36 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
             placeholderTextColor={Colors.textMuted}
             multiline
             maxHeight={100}
-            returnKeyType="send"
-            onSubmitEditing={Platform.OS !== 'web' ? handleSend : undefined}
+            onKeyPress={handleKey}
             blurOnSubmit={false}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, (!text.trim() || isLoading) && styles.sendBtnDisabled]}
+            style={[styles.sendBtn, (!text.trim() || isLoading) && styles.sendDisabled]}
             onPress={handleSend}
             disabled={!text.trim() || isLoading}
             activeOpacity={0.8}
           >
-            <Text style={[styles.sendIcon, (!text.trim() || isLoading) && styles.sendIconDisabled]}>➤</Text>
+            <Text style={[styles.sendIcon, (!text.trim() || isLoading) && { color: Colors.textMuted }]}>➤</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.footer}>JackDaw GeoAI · PoliRuralPlus · Copernicus</Text>
       </View>
-
-    </KeyboardAvoidingView>
+    </>
   );
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  // ── Root: column flex, fills parent height completely ──────────────────
+  // Root — column, fills ALL available height from parent
   panel: {
     flex: 1,
     flexDirection: 'column',
     backgroundColor: Colors.bgSurface,
+    // Critical for web: without overflow hidden the panel can grow past viewport
+    ...Platform.select({ web: { overflow: 'hidden' } }),
   },
 
-  // ── Header ──────────────────────────────────────────────────────────────
+  // Header
   header: {
     flexShrink: 0,
     padding: Spacing.md,
@@ -249,72 +278,92 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   headerRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
-  title:        { fontFamily: Fonts.display, fontSize: 15, color: Colors.textPrimary, letterSpacing: -0.2 },
+  title:        { fontFamily: Fonts.display, fontSize: 15, color: Colors.textPrimary, letterSpacing: -0.3 },
   sub:          { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
-  clearBtn:     { padding: 5 },
-  clearBtnText: { fontFamily: Fonts.body, fontSize: 13, color: Colors.textMuted },
+  clearBtn:     { padding: 6 },
+  clearBtnText: { fontSize: 14, color: Colors.textMuted },
 
-  // ── Badges ───────────────────────────────────────────────────────────────
-  badgesScroll: { flexShrink: 0, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  badgesRow:    { flexDirection: 'row', paddingHorizontal: Spacing.sm, paddingVertical: 6, gap: 5 },
-  badge:        { paddingHorizontal: 8, paddingVertical: 3, backgroundColor: Colors.bgOverlay, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
-  badgeText:    { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
+  // Badges + chips horizontal scrolls
+  rowScroll:   { flexShrink: 0 },
+  rowContent:  {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 7,
+    gap: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  badge:     { paddingHorizontal: 9, paddingVertical: 3, backgroundColor: Colors.bgOverlay, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
+  badgeText: { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
+  chip:      { paddingHorizontal: 11, paddingVertical: 5, backgroundColor: Colors.bgElevated, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
+  chipText:  { fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary },
 
-  // ── Chips ────────────────────────────────────────────────────────────────
-  chipsScroll: { flexShrink: 0, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  chipsRow:    { flexDirection: 'row', paddingHorizontal: Spacing.sm, paddingVertical: 7, gap: 5 },
-  chip:        { paddingHorizontal: 11, paddingVertical: 5, backgroundColor: Colors.bgElevated, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
-  chipText:    { fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary },
+  // Feed — THE critical fix for web
+  feed: {
+    flex: 1,
+    // minHeight: 0 is the web-specific fix that makes flex:1 work on ScrollView
+    // react-native-web maps this to CSS min-height:0 which prevents overflow
+    ...Platform.select({ web: { minHeight: 0 } }),
+  },
+  feedContent: {
+    padding: Spacing.md,
+    gap: 12,
+  },
 
-  // ── Feed: flex:1 = fills all space between chips and input ───────────────
-  feed:        { flex: 1 },
-  feedContent: { padding: Spacing.md, gap: 12 },
+  // Messages
+  msgRow:     { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
+  msgRowUser: { flexDirection: 'row-reverse' },
 
-  // ── Messages ─────────────────────────────────────────────────────────────
-  msgRow:        { flexDirection: 'row', gap: 8, alignItems: 'flex-end', marginBottom: 2 },
-  msgRowUser:    { flexDirection: 'row-reverse' },
-  avatar:        { width: 26, height: 26, borderRadius: 13, backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarText:    { fontSize: 13 },
-  bubble:        { maxWidth: '84%', padding: 10, borderRadius: 14, borderWidth: 1, borderColor: Colors.border },
-  bubbleUser:    { backgroundColor: Colors.bubbleUser, borderColor: 'rgba(15,34,68,0.6)', borderBottomRightRadius: 3 },
-  bubbleAsst:    { backgroundColor: Colors.bubbleAsst, borderBottomLeftRadius: 3 },
-  bubbleWelcome: { borderColor: Colors.greenBorder },
-  msgTime:       { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, marginTop: 5 },
+  avatar:      { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarEmoji: { fontSize: 14 },
 
-  // ── Typing dots ──────────────────────────────────────────────────────────
-  typing:    { flexDirection: 'row', gap: 5, alignItems: 'center' },
-  typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.green },
+  bubble: {
+    maxWidth: '82%',
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  bubbleUser:    { backgroundColor: Colors.bubbleUser, borderColor: 'rgba(15,34,68,0.7)', borderBottomRightRadius: 4 },
+  bubbleAsst:    { backgroundColor: Colors.bubbleAsst, borderBottomLeftRadius: 4 },
+  bubbleWelcome: { borderColor: Colors.greenBorder, maxWidth: '90%' },
 
-  // ── Markdown ─────────────────────────────────────────────────────────────
-  mdPara:       { fontFamily: Fonts.body,       fontSize: 13, color: Colors.textPrimary, lineHeight: 20 },
-  mdH2:         { fontFamily: Fonts.display,    fontSize: 14, color: Colors.textPrimary, marginVertical: 4 },
-  mdH3:         { fontFamily: Fonts.bodyMedium, fontSize: 13, color: Colors.textPrimary, marginVertical: 3 },
-  mdCode:       { fontFamily: Fonts.mono, fontSize: 11, color: Colors.textSecondary, backgroundColor: Colors.bgOverlay, padding: 8, borderRadius: Radius.sm, marginVertical: 4 },
-  mdBulletRow:  { flexDirection: 'row', gap: 7, marginVertical: 1 },
-  mdBulletDot:  { fontFamily: Fonts.mono, fontSize: 13, color: Colors.green, lineHeight: 20 },
-  mdBulletText: { flex: 1, fontFamily: Fonts.body, fontSize: 13, color: Colors.textPrimary, lineHeight: 20 },
-  bold:         { fontFamily: Fonts.display, color: Colors.textPrimary },
-  italic:       { fontStyle: 'italic', color: Colors.textSecondary },
-  inlineCode:   { fontFamily: Fonts.mono, fontSize: 11, color: Colors.green, backgroundColor: Colors.bgOverlay },
+  msgTime: { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, marginTop: 6 },
 
-  // ── Welcome steps ────────────────────────────────────────────────────────
-  step:        { flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'flex-start' },
-  stepNum:     { width: 17, height: 17, borderRadius: 9, backgroundColor: Colors.greenTrace, borderWidth: 1, borderColor: Colors.greenBorder, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
+  // Typing dots
+  dots: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 4 },
+  dot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.green },
+
+  // Markdown
+  mdPara:    { fontFamily: Fonts.body, fontSize: 13, color: Colors.textPrimary, lineHeight: 20 },
+  mdH2:      { fontFamily: Fonts.display, fontSize: 14, color: Colors.textPrimary, marginVertical: 4 },
+  mdH3:      { fontFamily: Fonts.bodyMedium, fontSize: 13, color: Colors.textPrimary, marginVertical: 3 },
+  mdCode:    { fontFamily: Fonts.mono, fontSize: 11, color: Colors.textSecondary, backgroundColor: Colors.bgOverlay, padding: 8, borderRadius: Radius.sm, marginVertical: 4 },
+  bulletRow: { flexDirection: 'row', gap: 7, marginVertical: 1 },
+  bulletDot: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.green, lineHeight: 20 },
+  bold:       { fontFamily: Fonts.display, color: Colors.textPrimary },
+  italic:     { fontStyle: 'italic', color: Colors.textSecondary },
+  inlineCode: { fontFamily: Fonts.mono, fontSize: 11, color: Colors.green },
+
+  // Welcome steps
+  step:        { flexDirection: 'row', gap: 8, marginTop: 9, alignItems: 'flex-start' },
+  stepNum:     { width: 18, height: 18, borderRadius: 9, backgroundColor: Colors.greenTrace, borderWidth: 1, borderColor: Colors.greenBorder, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
   stepNumText: { fontFamily: Fonts.mono, fontSize: 9, color: Colors.green },
   stepText:    { flex: 1, fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary, lineHeight: 18 },
 
-  // ── Input — flexShrink:0 means NEVER shrinks, always visible at bottom ──
+  // Input — flexShrink:0 guarantees it never moves
   inputArea: {
     flexShrink: 0,
+    padding: Spacing.sm,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    padding: Spacing.sm,
     backgroundColor: Colors.bgSurface,
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 7,
+    gap: 8,
     backgroundColor: Colors.bgElevated,
     borderRadius: Radius.xl,
     borderWidth: 1,
@@ -323,10 +372,9 @@ const styles = StyleSheet.create({
     paddingRight: 6,
     paddingVertical: 6,
   },
-  input:           { flex: 1, fontFamily: Fonts.body, fontSize: 14, color: Colors.textPrimary, maxHeight: 100, paddingVertical: 2 },
-  sendBtn:         { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
-  sendBtnDisabled: { backgroundColor: Colors.bgOverlay },
-  sendIcon:        { fontSize: 13, color: '#000' },
-  sendIconDisabled:{ color: Colors.textMuted },
-  footer:          { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
+  input:       { flex: 1, fontFamily: Fonts.body, fontSize: 14, color: Colors.textPrimary, maxHeight: 100, paddingVertical: 2 },
+  sendBtn:     { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
+  sendDisabled:{ backgroundColor: Colors.bgOverlay },
+  sendIcon:    { fontSize: 14, color: '#000' },
+  footer:      { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
 });
