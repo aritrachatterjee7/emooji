@@ -1,22 +1,22 @@
 // src/components/ChatPanel.jsx
-import React, { useRef, useCallback, useState } from 'react';
+import React, { useRef, useCallback, useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Platform, KeyboardAvoidingView, FlatList,
+  StyleSheet, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { Colors, Fonts, Radius, Spacing } from '../constants/tokens';
 import { parseMarkdownNative, parseInline } from '../utils/markdown';
 
 const CHIPS = [
-  { emoji: '🌿', label: 'Veg health',    prompt: 'Show vegetation health and slope suitability for grazing in this field.' },
-  { emoji: '🌡', label: 'Heat stress',   prompt: 'Which pastures are most vulnerable to heat stress this week?' },
-  { emoji: '⛰',  label: 'Erosion risk',  prompt: 'Find areas with highest erosion risk after last week\'s rainfall.' },
-  { emoji: '🦋', label: 'Natura 2000',   prompt: 'Which parcels overlap with Natura 2000 zones?' },
-  { emoji: '📈', label: 'NDVI trend',    prompt: 'How has pasture productivity changed over the past two seasons?' },
-  { emoji: '🐄', label: 'Herd move',     prompt: 'Which parts of the farm are most suitable for moving the herd tomorrow?' },
-  { emoji: '🛰', label: 'NDVI now',      prompt: 'What is the current vegetation health (NDVI) for this area?' },
-  { emoji: '🗺',  label: 'Land cover',   prompt: 'What type of land cover is this area classified as?' },
-  { emoji: '📐', label: 'Terrain',       prompt: 'Give me a complete terrain analysis — elevation, slope and grazing suitability.' },
+  { emoji: '🌿', label: 'Veg health',   prompt: 'Show vegetation health and slope suitability for grazing in this field.' },
+  { emoji: '🌡', label: 'Heat stress',  prompt: 'Which pastures are most vulnerable to heat stress this week?' },
+  { emoji: '⛰',  label: 'Erosion risk', prompt: 'Find areas with highest erosion risk after last week\'s rainfall.' },
+  { emoji: '🦋', label: 'Natura 2000',  prompt: 'Which parcels overlap with Natura 2000 zones?' },
+  { emoji: '📈', label: 'NDVI trend',   prompt: 'How has pasture productivity changed over the past two seasons?' },
+  { emoji: '🐄', label: 'Herd move',    prompt: 'Which parts of the farm are most suitable for moving the herd tomorrow?' },
+  { emoji: '🛰', label: 'NDVI now',     prompt: 'What is the current vegetation health (NDVI) for this area?' },
+  { emoji: '🗺',  label: 'Land cover',  prompt: 'What type of land cover is this area classified as?' },
+  { emoji: '📐', label: 'Terrain',      prompt: 'Give me a complete terrain analysis — elevation, slope and grazing suitability.' },
 ];
 
 function InlineText({ text, style }) {
@@ -49,15 +49,24 @@ function MarkdownSegment({ seg }) {
 function BubbleContent({ content }) {
   return (
     <View>
-      {parseMarkdownNative(content).map((seg, i) => <MarkdownSegment key={i} seg={seg} />)}
+      {parseMarkdownNative(content).map((seg, i) => (
+        <MarkdownSegment key={i} seg={seg} />
+      ))}
     </View>
   );
 }
 
 function TypingIndicator() {
   return (
-    <View style={styles.typing}>
-      {[0, 1, 2].map(i => <View key={i} style={styles.typingDot} />)}
+    <View style={styles.msgRow}>
+      <View style={styles.avatar}><Text style={styles.avatarText}>🐄</Text></View>
+      <View style={[styles.bubble, styles.bubbleAsst, { paddingVertical: 14, paddingHorizontal: 16 }]}>
+        <View style={styles.typing}>
+          <View style={[styles.typingDot, { opacity: 1 }]} />
+          <View style={[styles.typingDot, { opacity: 0.6 }]} />
+          <View style={[styles.typingDot, { opacity: 0.3 }]} />
+        </View>
+      </View>
     </View>
   );
 }
@@ -68,11 +77,8 @@ function ChatMessage({ item }) {
     <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
       {!isUser && <View style={styles.avatar}><Text style={styles.avatarText}>🐄</Text></View>}
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAsst]}>
-        {item.isLoading
-          ? <TypingIndicator />
-          : <BubbleContent content={item.content} />
-        }
-        {!item.isLoading && <Text style={styles.msgTime}>{item.time}</Text>}
+        <BubbleContent content={item.content} />
+        <Text style={styles.msgTime}>{item.time}</Text>
       </View>
       {isUser && <View style={styles.avatar}><Text style={styles.avatarText}>👤</Text></View>}
     </View>
@@ -105,7 +111,15 @@ function WelcomeMessage() {
 
 export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClick }) {
   const [text, setText] = useState('');
-  const listRef = useRef(null);
+  const scrollRef = useRef(null);
+
+  // Scroll to bottom whenever messages change or typing indicator appears/disappears
+  useEffect(() => {
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [messages.length, isLoading]);
 
   const handleSend = useCallback(() => {
     const val = text.trim();
@@ -119,17 +133,15 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
     onChipClick?.();
   };
 
-  const allMessages = isLoading
-    ? [...messages, { id: '__loading', role: 'assistant', isLoading: true }]
-    : messages;
-
   return (
+    // KeyboardAvoidingView wraps everything — pushes content up when keyboard opens
     <KeyboardAvoidingView
       style={styles.panel}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 52 : 0}
     >
-      {/* Header */}
+
+      {/* Header — fixed, never scrolls */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Field Analysis</Text>
@@ -140,7 +152,7 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
         <Text style={styles.sub}>Draw any field · Ask in plain language · Real satellite data</Text>
       </View>
 
-      {/* Source badges */}
+      {/* Source badges — fixed horizontal scroll */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -154,7 +166,7 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
         ))}
       </ScrollView>
 
-      {/* Chips */}
+      {/* Chips — fixed horizontal scroll */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -168,20 +180,27 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
         ))}
       </ScrollView>
 
-      {/* Messages */}
-      <FlatList
-        ref={listRef}
-        data={allMessages}
-        keyExtractor={(item, i) => item.id || String(i)}
-        renderItem={({ item }) => <ChatMessage item={item} />}
-        ListHeaderComponent={<WelcomeMessage />}
+      {/* Messages — flex:1 takes ALL remaining space between chips and input */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.feed}
         contentContainerStyle={styles.feedContent}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-        onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
         showsVerticalScrollIndicator={false}
-      />
+        keyboardShouldPersistTaps="handled"
+        // Scroll to bottom when layout changes (new message added)
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        <WelcomeMessage />
+        {messages.map((m, i) => (
+          <ChatMessage key={i} item={m} />
+        ))}
+        {/* Typing indicator INSIDE the scroll view — renders as a message row */}
+        {isLoading && <TypingIndicator />}
+        {/* Spacer so last message isn't flush against bottom */}
+        <View style={{ height: 8 }} />
+      </ScrollView>
 
-      {/* Input */}
+      {/* Input — flexShrink:0 guarantees it ALWAYS stays at bottom */}
       <View style={styles.inputArea}>
         <View style={styles.inputRow}>
           <TextInput
@@ -207,63 +226,66 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat, onChipClic
         </View>
         <Text style={styles.footer}>JackDaw GeoAI · PoliRuralPlus · Copernicus</Text>
       </View>
+
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  panel: { flex: 1, backgroundColor: Colors.bgSurface },
+  // ── Root: column flex, fills parent height completely ──────────────────
+  panel: {
+    flex: 1,
+    flexDirection: 'column',
+    backgroundColor: Colors.bgSurface,
+  },
 
-  // Header
+  // ── Header ──────────────────────────────────────────────────────────────
   header: {
+    flexShrink: 0,
     padding: Spacing.md,
     paddingBottom: 9,
     backgroundColor: Colors.bgElevated,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 3,
-  },
-  title: { fontFamily: Fonts.display, fontSize: 15, fontWeight: '600', color: Colors.textPrimary, letterSpacing: -0.2 },
-  sub:   { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
-
+  headerRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
+  title:        { fontFamily: Fonts.display, fontSize: 15, color: Colors.textPrimary, letterSpacing: -0.2 },
+  sub:          { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
   clearBtn:     { padding: 5 },
   clearBtnText: { fontFamily: Fonts.body, fontSize: 13, color: Colors.textMuted },
 
-  // Badges
-  badgesScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  // ── Badges ───────────────────────────────────────────────────────────────
+  badgesScroll: { flexShrink: 0, borderBottomWidth: 1, borderBottomColor: Colors.border },
   badgesRow:    { flexDirection: 'row', paddingHorizontal: Spacing.sm, paddingVertical: 6, gap: 5 },
   badge:        { paddingHorizontal: 8, paddingVertical: 3, backgroundColor: Colors.bgOverlay, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
   badgeText:    { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
 
-  // Chips
-  chipsScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  // ── Chips ────────────────────────────────────────────────────────────────
+  chipsScroll: { flexShrink: 0, borderBottomWidth: 1, borderBottomColor: Colors.border },
   chipsRow:    { flexDirection: 'row', paddingHorizontal: Spacing.sm, paddingVertical: 7, gap: 5 },
   chip:        { paddingHorizontal: 11, paddingVertical: 5, backgroundColor: Colors.bgElevated, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
   chipText:    { fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary },
 
-  // Feed
-  feedContent: { padding: Spacing.md, gap: 12, paddingBottom: Spacing.xl },
+  // ── Feed: flex:1 = fills all space between chips and input ───────────────
+  feed:        { flex: 1 },
+  feedContent: { padding: Spacing.md, gap: 12 },
 
-  // Messages
-  msgRow:     { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
-  msgRowUser: { flexDirection: 'row-reverse' },
-
-  avatar:     { width: 26, height: 26, borderRadius: 13, backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarText: { fontSize: 13 },
-
+  // ── Messages ─────────────────────────────────────────────────────────────
+  msgRow:        { flexDirection: 'row', gap: 8, alignItems: 'flex-end', marginBottom: 2 },
+  msgRowUser:    { flexDirection: 'row-reverse' },
+  avatar:        { width: 26, height: 26, borderRadius: 13, backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarText:    { fontSize: 13 },
   bubble:        { maxWidth: '84%', padding: 10, borderRadius: 14, borderWidth: 1, borderColor: Colors.border },
   bubbleUser:    { backgroundColor: Colors.bubbleUser, borderColor: 'rgba(15,34,68,0.6)', borderBottomRightRadius: 3 },
   bubbleAsst:    { backgroundColor: Colors.bubbleAsst, borderBottomLeftRadius: 3 },
   bubbleWelcome: { borderColor: Colors.greenBorder },
+  msgTime:       { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, marginTop: 5 },
 
-  msgTime: { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, marginTop: 5 },
+  // ── Typing dots ──────────────────────────────────────────────────────────
+  typing:    { flexDirection: 'row', gap: 5, alignItems: 'center' },
+  typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.green },
 
-  // Markdown
+  // ── Markdown ─────────────────────────────────────────────────────────────
   mdPara:       { fontFamily: Fonts.body,       fontSize: 13, color: Colors.textPrimary, lineHeight: 20 },
   mdH2:         { fontFamily: Fonts.display,    fontSize: 14, color: Colors.textPrimary, marginVertical: 4 },
   mdH3:         { fontFamily: Fonts.bodyMedium, fontSize: 13, color: Colors.textPrimary, marginVertical: 3 },
@@ -271,30 +293,40 @@ const styles = StyleSheet.create({
   mdBulletRow:  { flexDirection: 'row', gap: 7, marginVertical: 1 },
   mdBulletDot:  { fontFamily: Fonts.mono, fontSize: 13, color: Colors.green, lineHeight: 20 },
   mdBulletText: { flex: 1, fontFamily: Fonts.body, fontSize: 13, color: Colors.textPrimary, lineHeight: 20 },
+  bold:         { fontFamily: Fonts.display, color: Colors.textPrimary },
+  italic:       { fontStyle: 'italic', color: Colors.textSecondary },
+  inlineCode:   { fontFamily: Fonts.mono, fontSize: 11, color: Colors.green, backgroundColor: Colors.bgOverlay },
 
-  bold:       { fontFamily: Fonts.display, color: Colors.textPrimary },
-  italic:     { fontStyle: 'italic', color: Colors.textSecondary },
-  inlineCode: { fontFamily: Fonts.mono, fontSize: 11, color: Colors.green, backgroundColor: Colors.bgOverlay },
-
-  // Welcome steps
+  // ── Welcome steps ────────────────────────────────────────────────────────
   step:        { flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'flex-start' },
   stepNum:     { width: 17, height: 17, borderRadius: 9, backgroundColor: Colors.greenTrace, borderWidth: 1, borderColor: Colors.greenBorder, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
   stepNumText: { fontFamily: Fonts.mono, fontSize: 9, color: Colors.green },
   stepText:    { flex: 1, fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary, lineHeight: 18 },
 
-  // Typing
-  typing:    { flexDirection: 'row', gap: 4, padding: 3, alignItems: 'center' },
-  typingDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.green },
-
-  // Input
-  inputArea: { borderTopWidth: 1, borderTopColor: Colors.border, padding: Spacing.sm, paddingBottom: Spacing.sm, backgroundColor: Colors.bgSurface },
-  inputRow:  { flexDirection: 'row', alignItems: 'flex-end', gap: 7, backgroundColor: Colors.bgElevated, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.borderMid, paddingLeft: 14, paddingRight: 6, paddingVertical: 6 },
-  input:     { flex: 1, fontFamily: Fonts.body, fontSize: 14, color: Colors.textPrimary, maxHeight: 100, paddingVertical: 2 },
-
+  // ── Input — flexShrink:0 means NEVER shrinks, always visible at bottom ──
+  inputArea: {
+    flexShrink: 0,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    padding: Spacing.sm,
+    backgroundColor: Colors.bgSurface,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 7,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.borderMid,
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 6,
+  },
+  input:           { flex: 1, fontFamily: Fonts.body, fontSize: 14, color: Colors.textPrimary, maxHeight: 100, paddingVertical: 2 },
   sendBtn:         { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { backgroundColor: Colors.bgOverlay },
   sendIcon:        { fontSize: 13, color: '#000' },
   sendIconDisabled:{ color: Colors.textMuted },
-
-  footer: { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
+  footer:          { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
 });
