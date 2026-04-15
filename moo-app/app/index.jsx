@@ -173,10 +173,10 @@ export default function MainScreen() {
           </View>
         </View>
 
-        {/* Chat section — key fix: explicit flex:1 + minHeight:0 on web */}
+        {/* Chat section */}
         <View style={[
           styles.chatSection,
-          !isMobile && styles.chatSectionDesktop,
+          isMobile ? styles.chatSectionMobile : styles.chatSectionDesktop,
           isMobile && !chatVisible && styles.hidden,
         ]}>
           <ChatPanel
@@ -226,20 +226,23 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { minHeight: 0 } }),
   },
 
-  // Desktop chat sidebar — fixed width, never grows
+  // Desktop chat sidebar — fixed width, never grows or shrinks
   chatSectionDesktop: {
-    flex: 0,
     width: CHAT_WIDTH,
     flexShrink: 0,
     borderLeftWidth: 1,
     borderLeftColor: Colors.border,
   },
 
-  // Mobile chat — flex:1 on mobile, but flex:none on desktop so fixed width wins
+  // Chat section base
   chatSection: {
-    flex: 1,
     backgroundColor: Colors.bgSurface,
     ...Platform.select({ web: { minHeight: 0 } }),
+  },
+
+  // Mobile chat — fill available space
+  chatSectionMobile: {
+    flex: 1,
   },
 
   hidden:       { display: 'none' },
