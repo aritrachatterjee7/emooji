@@ -3,10 +3,13 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkColors, LightColors } from '../constants/tokens';
 
+// ── Default value ensures useTheme() never returns null ─────────────────────
+// This prevents crashes during Expo static rendering when the provider
+// hasn't mounted yet but components are already being evaluated.
 const ThemeContext = createContext({
-  isDark: true,
+  isDark:      true,
   toggleTheme: () => {},
-  colors: DarkColors,
+  colors:      DarkColors,
 });
 
 const STORAGE_KEY = 'emooji_theme';
@@ -19,7 +22,7 @@ export function ThemeProvider({ children }) {
     AsyncStorage.getItem(STORAGE_KEY).then(val => {
       if (val !== null) setIsDark(val === 'dark');
     }).catch(() => {
-      // if storage fails, just stay on default dark
+      // if storage fails, stay on default dark
     });
   }, []);
 
