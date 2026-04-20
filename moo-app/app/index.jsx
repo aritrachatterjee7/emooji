@@ -10,7 +10,7 @@ import { ChatPanel }        from '../src/components/ChatPanel';
 import { MapToolbar }       from '../src/components/MapToolbar';
 import { FieldStatsBar }    from '../src/components/FieldStatsBar';
 import FieldMap             from '../src/components/FieldMap';
-import { Fonts, Spacing, CHAT_WIDTH } from '../src/constants/tokens';
+import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
 import { useAuth }          from '../src/context/AuthContext';
 import { useTheme }         from '../src/context/ThemeContext';
 
@@ -22,7 +22,8 @@ function now() {
 
 function AppSplash({ visible, progress, status }) {
   const opacity = useRef(new Animated.Value(1)).current;
-  const { colors } = useTheme();
+  const theme = useTheme();
+  const colors = theme?.colors ?? DarkColors; // ← null safety for static render
 
   useEffect(() => {
     if (!visible) {
@@ -36,13 +37,7 @@ function AppSplash({ visible, progress, status }) {
 
   return (
     <Animated.View
-      style={[
-        styles.splash,
-        {
-          opacity,
-          backgroundColor: colors.bgBase,
-        },
-      ]}
+      style={[styles.splash, { opacity, backgroundColor: colors.bgBase }]}
       pointerEvents={visible ? 'auto' : 'none'}
     >
       <Text style={styles.splashCow}>🐄</Text>
@@ -61,12 +56,16 @@ function AppSplash({ visible, progress, status }) {
 }
 
 export default function MainScreen() {
-  const { width }    = useWindowDimensions();
-  const isMobile     = width < MOBILE_BREAKPOINT;
-  const { colors }   = useTheme();
+  const { width }  = useWindowDimensions();
+  const isMobile   = width < MOBILE_BREAKPOINT;
+
+  // ── Theme — fall back to DarkColors if context not yet available ──────
+  const theme  = useTheme();
+  const colors = theme?.colors ?? DarkColors;
 
   // ── Firebase auth ──────────────────────────────────────────────
-  const { user }   = useAuth();
+  const auth       = useAuth();
+  const user       = auth?.user ?? null;
   const customerId = user?.uid || null;
 
   // ── Splash ─────────────────────────────────────────────────────
@@ -248,14 +247,11 @@ export default function MainScreen() {
   );
 }
 
-// Static styles — anything that never changes with theme stays here.
-// Dynamic colors are applied inline using colors from useTheme().
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     ...Platform.select({ web: { height: '100vh', overflow: 'hidden' } }),
   },
-
   workspace: {
     flex: 1,
     ...Platform.select({ web: { minHeight: 0, overflow: 'hidden' } }),
@@ -263,30 +259,23 @@ const styles = StyleSheet.create({
   workspaceDesktop: {
     flexDirection: 'row',
   },
-
   mapSection: {
     flex: 1,
     ...Platform.select({ web: { minHeight: 0 } }),
   },
-
   chatSectionDesktop: {
     width: CHAT_WIDTH,
     flexShrink: 0,
     borderLeftWidth: 1,
   },
-
   chatSection: {
     ...Platform.select({ web: { minHeight: 0 } }),
   },
-
   chatSectionMobile: {
     flex: 1,
   },
-
   hidden:       { display: 'none' },
   mapContainer: { flex: 1, position: 'relative' },
-
-  // Splash — bg + text colors applied inline so they respond to theme
   splash: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
