@@ -15,19 +15,25 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall }) {
   const insets = useSafeAreaInsets();
   const { state, label } = connStatus;
 
-  // ── Null-safe context reads (static render / context not yet mounted) ──
   const { logout, user } = useAuth() ?? { logout: () => {}, user: null };
-  const { isDark, toggleTheme, colors } = useTheme() ?? { isDark: true, toggleTheme: () => {}, colors: DarkColors };
+  const { isDark, toggleTheme, colors } = useTheme() ?? { isDark: false, toggleTheme: () => {}, colors: DarkColors };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Sign out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign out', style: 'destructive', onPress: logout },
-      ]
-    );
+    if (Platform.OS === 'web') {
+      // Alert doesn't work on web — use native browser confirm
+      if (window.confirm('Are you sure you want to sign out?')) {
+        logout();
+      }
+    } else {
+      Alert.alert(
+        'Sign out',
+        'Are you sure you want to sign out?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign out', style: 'destructive', onPress: logout },
+        ]
+      );
+    }
   };
 
   return (
@@ -52,8 +58,8 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall }) {
       {fieldStats && (
         <View style={styles.center}>
           <Text style={[styles.centerArea, { color: colors.textSecondary }]}>{fieldStats.areaHa} ha</Text>
-          <Text style={[styles.centerDot,  { color: colors.textMuted }]}>·</Text>
-          <Text style={[styles.centerCoords,{ color: colors.textMuted }]} numberOfLines={1}>{fieldStats.centroid}</Text>
+          <Text style={[styles.centerDot, { color: colors.textMuted }]}>·</Text>
+          <Text style={[styles.centerCoords, { color: colors.textMuted }]} numberOfLines={1}>{fieldStats.centroid}</Text>
         </View>
       )}
 
@@ -91,12 +97,17 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall }) {
 
         {/* User avatar + logout */}
         {user && (
-          <TouchableOpacity style={styles.avatarBtn} onPress={handleLogout}>
+          <TouchableOpacity
+            style={styles.avatarBtn}
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
             {user.photoURL ? (
               <img
                 src={user.photoURL}
-                style={{ width: 28, height: 28, borderRadius: 14 }}
+                style={{ width: 28, height: 28, borderRadius: 14, cursor: 'pointer' }}
                 alt="avatar"
+                title="Click to sign out"
               />
             ) : (
               <View style={[styles.avatarFallback, { backgroundColor: colors.green }]}>
