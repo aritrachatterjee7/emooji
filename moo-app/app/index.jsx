@@ -10,7 +10,9 @@ import { ChatPanel }        from '../src/components/ChatPanel';
 import { MapToolbar }       from '../src/components/MapToolbar';
 import { FieldStatsBar }    from '../src/components/FieldStatsBar';
 import FieldMap             from '../src/components/FieldMap';
-import { Colors, Fonts, Spacing, CHAT_WIDTH } from '../src/constants/tokens';
+import { Fonts, Spacing, CHAT_WIDTH } from '../src/constants/tokens';
+import { useAuth }          from '../src/context/AuthContext';
+import { useTheme }         from '../src/context/ThemeContext';
 
 const MOBILE_BREAKPOINT = 860;
 
@@ -20,52 +22,77 @@ function now() {
 
 function AppSplash({ visible, progress, status }) {
   const opacity = useRef(new Animated.Value(1)).current;
+  const { colors } = useTheme();
 
   useEffect(() => {
     if (!visible) {
-      Animated.timing(opacity, { toValue: 0, duration: 500, useNativeDriver: Platform.OS !== 'web' }).start();
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: Platform.OS !== 'web',
+      }).start();
     }
   }, [visible]);
 
   return (
     <Animated.View
-      style={[styles.splash, { opacity }]}
+      style={[
+        styles.splash,
+        {
+          opacity,
+          backgroundColor: colors.bgBase,
+        },
+      ]}
       pointerEvents={visible ? 'auto' : 'none'}
     >
       <Text style={styles.splashCow}>🐄</Text>
-      <Text style={styles.splashWord}>eMoo<Text style={styles.splashGreen}>JI</Text></Text>
-      <Text style={styles.splashSub}>FIELD INTELLIGENCE · JACKDAW GEOAI</Text>
+      <Text style={[styles.splashWord, { color: colors.textPrimary }]}>
+        eMoo<Text style={{ color: colors.green }}>JI</Text>
+      </Text>
+      <Text style={[styles.splashSub, { color: colors.textMuted }]}>
+        FIELD INTELLIGENCE · JACKDAW GEOAI
+      </Text>
       <View style={styles.splashTrack}>
-        <View style={[styles.splashBar, { width: `${progress}%` }]} />
+        <View style={[styles.splashBar, { width: `${progress}%`, backgroundColor: colors.green }]} />
       </View>
-      <Text style={styles.splashStatus}>{status}</Text>
+      <Text style={[styles.splashStatus, { color: colors.textMuted }]}>{status}</Text>
     </Animated.View>
   );
 }
 
 export default function MainScreen() {
-  const { width }  = useWindowDimensions();
-  const isMobile   = width < MOBILE_BREAKPOINT;
+  const { width }    = useWindowDimensions();
+  const isMobile     = width < MOBILE_BREAKPOINT;
+  const { colors }   = useTheme();
 
+  // ── Firebase auth ──────────────────────────────────────────────
+  const { user }   = useAuth();
+  const customerId = user?.uid || null;
+
+  // ── Splash ─────────────────────────────────────────────────────
   const [splashVisible,  setSplashVisible]  = useState(true);
   const [splashProgress, setSplashProgress] = useState(0);
   const [splashStatus,   setSplashStatus]   = useState('Initialising…');
 
+  // ── Map state ──────────────────────────────────────────────────
   const [polygon,    setPolygon]    = useState(null);
   const [fieldStats, setFieldStats] = useState(null);
   const [mapLayer,   setMapLayer]   = useState('street');
   const [drawMode,   setDrawMode]   = useState(null);
 
+  // ── Chat state ─────────────────────────────────────────────────
   const [messages,    setMessages]    = useState([]);
   const [isLoading,   setIsLoading]   = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [activePanel, setActivePanel] = useState('map');
 
+  // ── PWA install ────────────────────────────────────────────────
   const [installPrompt,  setInstallPrompt]  = useState(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
 
   const { connStatus, init, sendMessage, clearHistory } = useJackDaw();
 
+  // ── Init JackDaw on mount ──────────────────────────────────────
   useEffect(() => {
     init((pct, label) => {
       setSplashProgress(pct);
@@ -73,14 +100,23 @@ export default function MainScreen() {
     }).finally(() => setSplashVisible(false));
   }, [init]);
 
+  // ── PWA install prompt ─────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); setShowInstallBtn(true); };
+    const handler = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstallBtn(true);
+    };
     window.addEventListener('beforeinstallprompt', handler);
-    window.addEventListener('appinstalled', () => { setShowInstallBtn(false); setInstallPrompt(null); });
+    window.addEventListener('appinstalled', () => {
+      setShowInstallBtn(false);
+      setInstallPrompt(null);
+    });
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
+  // ── Field drawn ────────────────────────────────────────────────
   const handleFieldDrawn = useCallback((poly, stats) => {
     setPolygon(poly);
     setFieldStats(stats);
@@ -92,6 +128,7 @@ export default function MainScreen() {
     setFieldStats(null);
   }, []);
 
+  // ── Chat ───────────────────────────────────────────────────────
   const appendMsg = (role, content) =>
     setMessages(prev => [...prev, { role, content, time: now() }]);
 
@@ -99,7 +136,7 @@ export default function MainScreen() {
     appendMsg('user', text);
     setIsLoading(true);
     try {
-      const reply = await sendMessage(text, polygon);
+      const reply = await sendMessage(text, polygon, customerId);
       appendMsg('assistant', reply);
       if (isMobile && activePanel === 'map') setUnreadCount(c => c + 1);
     } catch (err) {
@@ -107,7 +144,7 @@ export default function MainScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [sendMessage, polygon, isMobile, activePanel]);
+  }, [sendMessage, polygon, customerId, isMobile, activePanel]);
 
   const handleClearChat = useCallback(() => {
     setMessages([]);
@@ -124,14 +161,18 @@ export default function MainScreen() {
     if (!installPrompt) return;
     installPrompt.prompt();
     const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') { setShowInstallBtn(false); setInstallPrompt(null); }
+    if (outcome === 'accepted') {
+      setShowInstallBtn(false);
+      setInstallPrompt(null);
+    }
   };
 
   const mapVisible  = !isMobile || activePanel === 'map';
   const chatVisible = !isMobile || activePanel === 'chat';
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: colors.bgBase }]}>
+
       <TopNav
         connStatus={connStatus}
         fieldStats={fieldStats}
@@ -145,6 +186,7 @@ export default function MainScreen() {
         {/* Map section */}
         <View style={[
           styles.mapSection,
+          { backgroundColor: colors.bgBase },
           isMobile && !mapVisible && styles.hidden,
         ]}>
           <MapToolbar
@@ -172,7 +214,11 @@ export default function MainScreen() {
         {/* Chat section */}
         <View style={[
           styles.chatSection,
-          isMobile ? styles.chatSectionMobile : styles.chatSectionDesktop,
+          { backgroundColor: colors.bgSurface },
+          isMobile ? styles.chatSectionMobile : [
+            styles.chatSectionDesktop,
+            { borderLeftColor: colors.border },
+          ],
           isMobile && !chatVisible && styles.hidden,
         ]}>
           <ChatPanel
@@ -193,22 +239,25 @@ export default function MainScreen() {
         />
       )}
 
-      <AppSplash visible={splashVisible} progress={splashProgress} status={splashStatus} />
+      <AppSplash
+        visible={splashVisible}
+        progress={splashProgress}
+        status={splashStatus}
+      />
     </View>
   );
 }
 
+// Static styles — anything that never changes with theme stays here.
+// Dynamic colors are applied inline using colors from useTheme().
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.bgBase,
-    // On web, ensure root fills the full viewport height
     ...Platform.select({ web: { height: '100vh', overflow: 'hidden' } }),
   },
 
   workspace: {
     flex: 1,
-    // minHeight:0 is the web fix — without it flex children can overflow
     ...Platform.select({ web: { minHeight: 0, overflow: 'hidden' } }),
   },
   workspaceDesktop: {
@@ -217,25 +266,19 @@ const styles = StyleSheet.create({
 
   mapSection: {
     flex: 1,
-    backgroundColor: Colors.bgBase,
     ...Platform.select({ web: { minHeight: 0 } }),
   },
 
-  // Desktop chat sidebar — fixed width, never grows or shrinks
   chatSectionDesktop: {
     width: CHAT_WIDTH,
     flexShrink: 0,
     borderLeftWidth: 1,
-    borderLeftColor: Colors.border,
   },
 
-  // Chat section base
   chatSection: {
-    backgroundColor: Colors.bgSurface,
     ...Platform.select({ web: { minHeight: 0 } }),
   },
 
-  // Mobile chat — fill available space
   chatSectionMobile: {
     flex: 1,
   },
@@ -243,20 +286,18 @@ const styles = StyleSheet.create({
   hidden:       { display: 'none' },
   mapContainer: { flex: 1, position: 'relative' },
 
-  // Splash
+  // Splash — bg + text colors applied inline so they respond to theme
   splash: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
-    backgroundColor: Colors.bgBase,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 9,
   },
   splashCow:    { fontSize: 48 },
-  splashWord:   { fontFamily: Fonts.displayBold, fontSize: 30, color: Colors.textPrimary, letterSpacing: -1 },
-  splashGreen:  { color: Colors.green },
-  splashSub:    { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, letterSpacing: 1.5, marginTop: 3 },
-  splashTrack:  { width: 140, height: 1.5, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 1, marginTop: 18, overflow: 'hidden' },
-  splashBar:    { height: 1.5, backgroundColor: Colors.green, borderRadius: 1 },
-  splashStatus: { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
+  splashWord:   { fontFamily: Fonts.displayBold, fontSize: 30, letterSpacing: -1 },
+  splashSub:    { fontFamily: Fonts.mono, fontSize: 9, letterSpacing: 1.5, marginTop: 3 },
+  splashTrack:  { width: 140, height: 1.5, backgroundColor: 'rgba(128,128,128,0.15)', borderRadius: 1, marginTop: 18, overflow: 'hidden' },
+  splashBar:    { height: 1.5, borderRadius: 1 },
+  splashStatus: { fontFamily: Fonts.mono, fontSize: 10 },
 });

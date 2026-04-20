@@ -41,6 +41,7 @@ export function useJackDaw() {
 
   const setStatus = useCallback((state, label) => setConnStatus({ state, label }), []);
 
+  // ── Fetch JWT token from proxy ─────────────────────────────────────────
   const fetchToken = useCallback(async () => {
     try {
       const res = await fetch(CFG.proxy.tokenUrl, {
@@ -57,6 +58,10 @@ export function useJackDaw() {
     }
   }, []);
 
+  // ── Register MCP tools with JackDaw ───────────────────────────────────
+  // This tells JackDaw about your MCP server so it can call the tools
+  // (ndvi, weather, terrain, landcover, natura, grazing, private_tools)
+  // during conversations whenever relevant.
   const connectMCP = useCallback(async () => {
     if (!tokenRef.current) return false;
     try {
@@ -77,6 +82,9 @@ export function useJackDaw() {
     }
   }, []);
 
+  // ── Init — runs on app load ────────────────────────────────────────────
+  // Sequence: fetchToken → connectMCP → ready
+  // Has an 8s timeout so the map always loads even if auth fails.
   const init = useCallback(async (onProgress) => {
     const timeout = setTimeout(() => {
       setStatus('error', 'Timeout');
@@ -112,18 +120,32 @@ export function useJackDaw() {
     }
   }, [fetchToken, connectMCP, setStatus]);
 
-  const sendMessage = useCallback(async (userText, polygon) => {
-    const systemCtx = polygon
-      ? `You are an expert agricultural and environmental analyst. The farmer has drawn a polygon on the map. Use this GeoJSON geometry in ALL relevant MCP tool calls: ${polygon}\n\nAlways fetch real data. Never fabricate NDVI, weather, or terrain values.`
-      : 'You are an expert agricultural analyst. No polygon drawn yet — ask the farmer to draw a field first.';
+  // ── Send a chat message ────────────────────────────────────────────────
+  // customerId = Firebase user.uid — scopes all private MCP tool calls
+  // to the correct farm/user so data is never mixed between customers.
+  const sendMessage = useCallback(async (userText, polygon, customerId = null) => {
 
+    // System prompt — tells JackDaw the context for this conversation.
+    // If a polygon is drawn, it's injected here so JackDaw passes it
+    // to every MCP tool call automatically.
+    const systemCtx = polygon
+      ? `You are an expert agricultural and environmental analyst. The farmer has drawn a polygon on the map. Use this GeoJSON geometry in ALL relevant MCP tool calls: ${polygon}\n\nAlways fetch real data. Never fabricate NDVI, weather, or terrain values.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}. Pass this to all private MCP tool calls (get_my_paddocks, get_paddock_rating, get_animals_in_paddock, get_animal_track, get_ungrazed_paddocks, get_low_ndvi_paddocks, recommend_paddock_for_herd_move).` : ''}`
+      : `You are an expert agricultural analyst. No polygon drawn yet — ask the farmer to draw a field first.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}.` : ''}`;
+
+    // Add user message to history so JackDaw has full conversation context
     historyRef.current.push({ role: 'user', content: userText });
 
+    // Build request payload
     const payload = {
-      messages: historyRef.current,
-      system: systemCtx,
+      messages:    historyRef.current,
+      system:      systemCtx,
+      customer_id: customerId,   // ← Firebase UID — used by private MCP tools
     };
+
+    // Attach session ID if we have one (keeps conversation threaded in JackDaw)
     if (sessionRef.current) payload.session_id = sessionRef.current;
+
+    // Attach WKT polygon if drawn (PostGIS-compatible format for spatial queries)
     if (polygon) {
       const wkt = geojsonToWKT(polygon);
       if (wkt) payload.wkt = { srid: 4326, wkt };
@@ -135,11 +157,13 @@ export function useJackDaw() {
       body: JSON.stringify(payload),
     });
 
+    // Handle auth expiry — tell user to restart rather than silently failing
     if (res.status === 401) {
       tokenRef.current = null;
       setStatus('error', 'Session expired');
       return 'Session expired. Please restart the app.';
     }
+
     if (!res.ok) {
       const errText = await res.text().catch(() => res.statusText);
       throw new Error(`${res.status}: ${errText.slice(0, 300)}`);
@@ -148,6 +172,7 @@ export function useJackDaw() {
     const data = await res.json();
     let reply;
 
+    // Parse JackDaw response — handles multiple possible response shapes
     if (Array.isArray(data) && data.length > 0 && data[0].msg) {
       reply = data[0].msg.content;
       if (data[0].thread_id) sessionRef.current = data[0].thread_id;
@@ -156,10 +181,12 @@ export function useJackDaw() {
     else if (data.response)   { reply = data.response; }
     else                      { reply = JSON.stringify(data); }
 
+    // Add assistant reply to history for next turn
     historyRef.current.push({ role: 'assistant', content: reply });
     return reply;
   }, [setStatus]);
 
+  // ── Clear chat history ─────────────────────────────────────────────────
   const clearHistory = useCallback(() => { historyRef.current = []; }, []);
 
   return { connStatus, init, sendMessage, clearHistory };

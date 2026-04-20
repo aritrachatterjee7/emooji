@@ -1,7 +1,3 @@
-// src/components/FieldMap.web.jsx
-// Web-only — uses react-leaflet + leaflet-draw
-// Loaded automatically on web, .native.jsx loaded on iOS/Android
-
 import React, { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet-draw';

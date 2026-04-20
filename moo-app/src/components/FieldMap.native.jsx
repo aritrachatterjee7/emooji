@@ -6,7 +6,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, PanResponder } from 'react-native';
 import MapView, { Polygon, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { Colors, Radius, Fonts } from '../constants/tokens';
+import { Colors, Radius, Fonts } from '../context/ThemeContext';
 
 // Convert screen tap to coordinate (MapView gives us lat/lng directly)
 function coordsToGeoJSON(coords) {

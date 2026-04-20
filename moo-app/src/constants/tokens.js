@@ -1,6 +1,7 @@
 // src/constants/tokens.js
 
-export const Colors = {
+// ─── Dark theme colors (default) ──────────────────────────────────────────────
+export const DarkColors = {
   bgBase:      '#07090e',
   bgSurface:   '#0b1018',
   bgElevated:  '#0f1822',
@@ -31,6 +32,43 @@ export const Colors = {
   bubbleAsst: '#0b1018',
 };
 
+// ─── Light theme colors ────────────────────────────────────────────────────────
+export const LightColors = {
+  bgBase:      '#f0f4f8',
+  bgSurface:   '#ffffff',
+  bgElevated:  '#e8edf4',
+  bgOverlay:   '#dde4ee',
+  bgGlass:     'rgba(240,244,248,0.92)',
+
+  green:       '#00954a',
+  greenMid:    '#00c462',
+  greenDeep:   '#007a3d',
+  greenGlow:   'rgba(0,149,74,0.12)',
+  greenTrace:  'rgba(0,149,74,0.06)',
+  greenBorder: 'rgba(0,149,74,0.25)',
+
+  textPrimary:   '#0a0e17',
+  textSecondary: '#3a5068',
+  textMuted:     '#7a90a8',
+  textDisabled:  '#b0bec8',
+
+  border:        'rgba(0,0,0,0.07)',
+  borderMid:     'rgba(0,0,0,0.12)',
+  borderStrong:  'rgba(0,0,0,0.18)',
+
+  danger:  '#e53535',
+  warning: '#d97706',
+  info:    '#1d7de0',
+
+  bubbleUser: '#dbeafe',
+  bubbleAsst: '#ffffff',
+};
+
+// ─── Default export (dark) — kept for any legacy imports ──────────────────────
+// Prefer using useTheme().colors in components going forward.
+export const Colors = DarkColors;
+
+// ─── Typography ───────────────────────────────────────────────────────────────
 // Expo font keys — must match names loaded in _layout.jsx
 export const Fonts = {
   display:      'Outfit_700Bold',
@@ -41,6 +79,7 @@ export const Fonts = {
   monoMedium:   'JetBrainsMono_500Medium',
 };
 
+// ─── Border radius ────────────────────────────────────────────────────────────
 export const Radius = {
   sm:   5,
   md:   9,
@@ -49,15 +88,17 @@ export const Radius = {
   full: 9999,
 };
 
+// ─── Spacing ──────────────────────────────────────────────────────────────────
 export const Spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
+  xs:  4,
+  sm:  8,
+  md:  12,
+  lg:  16,
+  xl:  24,
   xxl: 32,
 };
 
+// ─── Layout constants ─────────────────────────────────────────────────────────
 export const NAV_HEIGHT        = 52;
 export const BOTTOM_NAV_HEIGHT = 58;
 export const CHAT_WIDTH        = 400;

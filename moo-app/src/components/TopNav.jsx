@@ -1,46 +1,111 @@
 // src/components/TopNav.jsx
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Fonts, Radius, Spacing, NAV_HEIGHT } from '../constants/tokens';
+import { Fonts, Radius, Spacing, NAV_HEIGHT } from '../constants/tokens';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
-function StatusDot({ state }) {
-  const color = state === 'online' ? Colors.green : state === 'connecting' ? Colors.warning : Colors.danger;
+function StatusDot({ state, colors }) {
+  const color = state === 'online' ? colors.green : state === 'connecting' ? colors.warning : colors.danger;
   return <View style={[styles.dot, { backgroundColor: color }]} />;
 }
 
 export function TopNav({ connStatus, fieldStats, showInstall, onInstall }) {
   const insets = useSafeAreaInsets();
   const { state, label } = connStatus;
+  const { logout, user } = useAuth();
+  const { isDark, toggleTheme, colors } = useTheme();
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: logout },
+      ]
+    );
+  };
 
   return (
-    <View style={[styles.nav, { paddingTop: insets.top || (Platform.OS === 'android' ? 8 : 0) }]}>
+    <View style={[
+      styles.nav,
+      {
+        paddingTop: insets.top || (Platform.OS === 'android' ? 8 : 0),
+        backgroundColor: colors.bgGlass,
+        borderBottomColor: colors.border,
+      }
+    ]}>
+
       {/* Brand */}
       <View style={styles.brand}>
         <Text style={styles.cow}>🐄</Text>
-        <Text style={styles.name}>eMoo<Text style={styles.nameGreen}>JI</Text></Text>
+        <Text style={[styles.name, { color: colors.textPrimary }]}>
+          eMoo<Text style={{ color: colors.green }}>JI</Text>
+        </Text>
       </View>
 
       {/* Field info (centre) */}
       {fieldStats && (
         <View style={styles.center}>
-          <Text style={styles.centerArea}>{fieldStats.areaHa} ha</Text>
-          <Text style={styles.centerDot}>·</Text>
-          <Text style={styles.centerCoords} numberOfLines={1}>{fieldStats.centroid}</Text>
+          <Text style={[styles.centerArea, { color: colors.textSecondary }]}>{fieldStats.areaHa} ha</Text>
+          <Text style={[styles.centerDot,  { color: colors.textMuted }]}>·</Text>
+          <Text style={[styles.centerCoords,{ color: colors.textMuted }]} numberOfLines={1}>{fieldStats.centroid}</Text>
         </View>
       )}
 
-      {/* Status badge */}
+      {/* Right side */}
       <View style={styles.right}>
-        <View style={[styles.badge, styles[`badge_${state}`]]}>
-          <StatusDot state={state} />
-          <Text style={[styles.badgeLabel, styles[`badgeLabel_${state}`]]}>{label}</Text>
+
+        {/* Status badge */}
+        <View style={[
+          styles.badge,
+          { borderColor: colors.borderMid, backgroundColor: colors.bgElevated },
+          state === 'online' && { borderColor: colors.greenBorder },
+        ]}>
+          <StatusDot state={state} colors={colors} />
+          <Text style={[
+            styles.badgeLabel,
+            { color: state === 'online' ? colors.green : state === 'connecting' ? colors.warning : colors.danger }
+          ]}>{label}</Text>
         </View>
+
+        {/* Dark / Light toggle */}
+        <TouchableOpacity
+          style={[styles.themeBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
+          onPress={toggleTheme}
+          accessibilityLabel="Toggle dark/light mode"
+        >
+          <Text style={styles.themeIcon}>{isDark ? '☀️' : '🌙'}</Text>
+        </TouchableOpacity>
+
+        {/* Install PWA button */}
         {showInstall && (
-          <TouchableOpacity style={styles.installBtn} onPress={onInstall}>
+          <TouchableOpacity style={[styles.installBtn, { backgroundColor: colors.green }]} onPress={onInstall}>
             <Text style={styles.installText}>Install</Text>
           </TouchableOpacity>
         )}
+
+        {/* User avatar + logout */}
+        {user && (
+          <TouchableOpacity style={styles.avatarBtn} onPress={handleLogout}>
+            {user.photoURL ? (
+              <img
+                src={user.photoURL}
+                style={{ width: 28, height: 28, borderRadius: 14 }}
+                alt="avatar"
+              />
+            ) : (
+              <View style={[styles.avatarFallback, { backgroundColor: colors.green }]}>
+                <Text style={styles.avatarText}>
+                  {(user.displayName || user.email || '?')[0].toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
+
       </View>
     </View>
   );
@@ -53,9 +118,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
     gap: 10,
-    backgroundColor: Colors.bgGlass,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
     zIndex: 100,
     ...Platform.select({
       ios:     { shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
@@ -63,30 +126,28 @@ const styles = StyleSheet.create({
     }),
   },
 
-  brand:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cow:      { fontSize: 20 },
-  name:     { fontFamily: Fonts.displayBold, fontSize: 17, color: Colors.textPrimary, letterSpacing: -0.3 },
-  nameGreen:{ color: Colors.green },
+  brand:     { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cow:       { fontSize: 20 },
+  name:      { fontFamily: Fonts.displayBold, fontSize: 17, letterSpacing: -0.3 },
 
   center:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, overflow: 'hidden' },
-  centerArea:   { fontFamily: Fonts.mono, fontSize: 11, color: Colors.textSecondary },
-  centerDot:    { fontFamily: Fonts.mono, fontSize: 11, color: Colors.textMuted },
-  centerCoords: { fontFamily: Fonts.mono, fontSize: 11, color: Colors.textMuted, flexShrink: 1 },
+  centerArea:   { fontFamily: Fonts.mono, fontSize: 11 },
+  centerDot:    { fontFamily: Fonts.mono, fontSize: 11 },
+  centerCoords: { fontFamily: Fonts.mono, fontSize: 11, flexShrink: 1 },
 
-  right:      { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
+  right: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
 
-  badge:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.borderMid, backgroundColor: Colors.bgElevated },
-  badge_online:      { borderColor: Colors.greenBorder },
-  badge_connecting:  {},
-  badge_error:       {},
+  badge:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
+  dot:         { width: 6, height: 6, borderRadius: 3 },
+  badgeLabel:  { fontFamily: Fonts.mono, fontSize: 10 },
 
-  dot: { width: 6, height: 6, borderRadius: 3 },
+  themeBtn:    { width: 30, height: 30, borderRadius: Radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  themeIcon:   { fontSize: 14 },
 
-  badgeLabel:           { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
-  badgeLabel_online:    { color: Colors.green },
-  badgeLabel_connecting:{ color: Colors.warning },
-  badgeLabel_error:     { color: Colors.danger },
-
-  installBtn:  { paddingHorizontal: 10, paddingVertical: 5, backgroundColor: Colors.green, borderRadius: Radius.md },
+  installBtn:  { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.md },
   installText: { fontFamily: Fonts.body, fontSize: 12, fontWeight: '700', color: '#000' },
+
+  avatarBtn:      { marginLeft: 4 },
+  avatarFallback: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  avatarText:     { fontFamily: Fonts.displayBold, fontSize: 13, color: '#07090e' },
 });

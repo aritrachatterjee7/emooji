@@ -1,0 +1,32 @@
+# ── Node ─────────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.npm
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyc
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# ── Environment / Secrets ─────────────────────────────────────────────────────
+# CRITICAL: never commit real credentials
+.env
+.env.local
+.env.*.local
+moo-mcp/.env
+
+# ── OS / Editor ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ── Render / Build artifacts ──────────────────────────────────────────────────
+.render/

@@ -4,7 +4,7 @@ import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, Platform, KeyboardAvoidingView,
 } from 'react-native';
-import { Colors, Fonts, Radius, Spacing } from '../constants/tokens';
+import { Colors, Fonts, Radius, Spacing } from '../context/ThemeContext';
 import { parseMarkdownNative, parseInline } from '../utils/markdown';
 
 

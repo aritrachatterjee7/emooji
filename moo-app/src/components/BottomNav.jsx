@@ -2,7 +2,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Fonts, Radius, BOTTOM_NAV_HEIGHT } from '../constants/tokens';
+import { Colors, Fonts, Radius, BOTTOM_NAV_HEIGHT } from '../context/ThemeContext';
 
 export function BottomNav({ activePanel, onSwitch, unreadCount }) {
   const insets = useSafeAreaInsets();

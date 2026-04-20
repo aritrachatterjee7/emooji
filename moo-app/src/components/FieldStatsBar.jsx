@@ -1,7 +1,7 @@
 // src/components/FieldStatsBar.jsx
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
-import { Colors, Fonts, Radius, Spacing } from '../constants/tokens';
+import { Colors, Fonts, Radius, Spacing } from '../context/ThemeContext';
 
 export function FieldStatsBar({ stats }) {
   if (!stats) return null;
