@@ -1,4 +1,4 @@
-const CACHE = 'emooji-v1';
+const CACHE = 'emooji-v2'; // bumped version forces old cache to clear
 const PRECACHE = ['/', '/manifest.json'];
 
 self.addEventListener('install', e => {
@@ -19,13 +19,32 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+
+  const url = e.request.url;
+
+  // Never intercept Firebase, API, or external requests
+  if (
+    url.includes('firebaseapp.com') ||
+    url.includes('googleapis.com') ||
+    url.includes('identitytoolkit') ||
+    url.includes('firebase') ||
+    url.includes('/api/') ||
+    url.includes('jackdaw') ||
+    url.includes('poliruralplus') ||
+    url.includes('onrender.com/api')
+  ) return;
+
   e.respondWith(
     caches.match(e.request).then(cached => {
-      const network = fetch(e.request).then(res => {
-        caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+      if (cached) return cached;
+      return fetch(e.request).then(res => {
+        // Only cache valid same-origin responses
+        if (!res || res.status !== 200 || res.type === 'opaque') return res;
+        // Clone BEFORE reading — this is the critical fix
+        const toCache = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, toCache));
         return res;
-      });
-      return cached || network;
+      }).catch(() => caches.match('/'));
     })
   );
 });

@@ -2,7 +2,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Fonts, Radius, Spacing, NAV_HEIGHT } from '../constants/tokens';
+import { Fonts, Radius, Spacing, NAV_HEIGHT, DarkColors } from '../constants/tokens';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
@@ -14,8 +14,10 @@ function StatusDot({ state, colors }) {
 export function TopNav({ connStatus, fieldStats, showInstall, onInstall }) {
   const insets = useSafeAreaInsets();
   const { state, label } = connStatus;
-  const { logout, user } = useAuth();
-  const { isDark, toggleTheme, colors } = useTheme();
+
+  // ── Null-safe context reads (static render / context not yet mounted) ──
+  const { logout, user } = useAuth() ?? { logout: () => {}, user: null };
+  const { isDark, toggleTheme, colors } = useTheme() ?? { isDark: true, toggleTheme: () => {}, colors: DarkColors };
 
   const handleLogout = () => {
     Alert.alert(
