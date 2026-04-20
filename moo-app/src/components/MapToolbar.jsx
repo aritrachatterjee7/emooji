@@ -1,31 +1,32 @@
 // src/components/MapToolbar.jsx
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, ScrollView, Platform } from 'react-native';
-import { Colors, Fonts, Radius, Spacing } from '../constants/tokens';
+import { View, TouchableOpacity, Text, StyleSheet, ScrollView } from 'react-native';
+import { Fonts, Radius, Spacing } from '../constants/tokens';
+import { useTheme } from '../context/ThemeContext';
 
-function ToolBtn({ label, icon, onPress, variant = 'default', active = false }) {
+function ToolBtn({ label, icon, onPress, variant = 'default', active = false, colors }) {
   return (
     <TouchableOpacity
       style={[
         styles.btn,
-        variant === 'primary' && styles.btnPrimary,
-        variant === 'danger'  && styles.btnDanger,
-        active && styles.btnActive,
+        { backgroundColor: colors.bgElevated, borderColor: colors.border },
+        variant === 'primary' && { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder },
+        active && { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder },
       ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
       <Text style={[
         styles.btnIcon,
-        variant === 'primary' && styles.btnIconPrimary,
-        active && styles.btnIconActive,
+        { color: colors.textSecondary },
+        (variant === 'primary' || active) && { color: colors.green },
       ]}>
         {icon}
       </Text>
       <Text style={[
         styles.btnLabel,
-        variant === 'primary' && styles.btnLabelPrimary,
-        active && styles.btnLabelActive,
+        { color: colors.textSecondary },
+        (variant === 'primary' || active) && { color: colors.green },
       ]}>
         {label}
       </Text>
@@ -34,24 +35,26 @@ function ToolBtn({ label, icon, onPress, variant = 'default', active = false }) 
 }
 
 export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLayerStreet, mapLayer, drawMode, fieldStats }) {
+  const { colors } = useTheme();
+
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, { backgroundColor: colors.bgGlass, borderBottomColor: colors.border }]}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
       >
-        <ToolBtn label="Polygon"   icon="△" variant="primary" active={drawMode === 'polygon'}   onPress={onPolygon} />
-        <ToolBtn label="Rectangle" icon="▭" active={drawMode === 'rectangle'} onPress={onRectangle} />
-        <ToolBtn label="Clear"     icon="✕" variant="danger"  onPress={onClear} />
-        <View style={styles.sep} />
-        <ToolBtn label="Sat"    icon="◉" active={mapLayer === 'satellite'} onPress={onLayerSat} />
-        <ToolBtn label="Street" icon="⌂" active={mapLayer === 'street'}   onPress={onLayerStreet} />
+        <ToolBtn label="Polygon"   icon="△" variant="primary" active={drawMode === 'polygon'}   onPress={onPolygon}    colors={colors} />
+        <ToolBtn label="Rectangle" icon="▭"                   active={drawMode === 'rectangle'} onPress={onRectangle}  colors={colors} />
+        <ToolBtn label="Clear"     icon="✕" variant="danger"                                    onPress={onClear}      colors={colors} />
+        <View style={[styles.sep, { backgroundColor: colors.borderMid }]} />
+        <ToolBtn label="Sat"    icon="◉" active={mapLayer === 'satellite'} onPress={onLayerSat}    colors={colors} />
+        <ToolBtn label="Street" icon="⌂" active={mapLayer === 'street'}   onPress={onLayerStreet} colors={colors} />
       </ScrollView>
 
       {!fieldStats && (
         <View style={styles.hint} pointerEvents="none">
-          <Text style={styles.hintText}>△ Draw a field to begin</Text>
+          <Text style={[styles.hintText, { color: colors.textMuted }]}>△ Draw a field to begin</Text>
         </View>
       )}
     </View>
@@ -60,9 +63,7 @@ export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLaye
 
 const styles = StyleSheet.create({
   wrapper: {
-    backgroundColor: Colors.bgGlass,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
   row: {
     flexDirection: 'row',
@@ -74,7 +75,6 @@ const styles = StyleSheet.create({
   sep: {
     width: 1,
     height: 18,
-    backgroundColor: Colors.borderMid,
     marginHorizontal: 5,
   },
   btn: {
@@ -83,20 +83,11 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingHorizontal: 11,
     paddingVertical: 6,
-    backgroundColor: Colors.bgElevated,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
   },
-  btnPrimary: { backgroundColor: Colors.greenTrace, borderColor: Colors.greenBorder },
-  btnDanger:  { backgroundColor: Colors.bgElevated, borderColor: Colors.border },
-  btnActive:  { backgroundColor: Colors.greenTrace, borderColor: Colors.greenBorder },
-  btnIcon:        { fontSize: 12, color: Colors.textSecondary },
-  btnIconPrimary: { color: Colors.green },
-  btnIconActive:  { color: Colors.green },
-  btnLabel:        { fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary },
-  btnLabelPrimary: { color: Colors.green },
-  btnLabelActive:  { color: Colors.green },
+  btnIcon:  { fontSize: 12 },
+  btnLabel: { fontFamily: Fonts.body, fontSize: 12 },
   hint: {
     paddingHorizontal: Spacing.md,
     paddingBottom: 6,
@@ -104,6 +95,5 @@ const styles = StyleSheet.create({
   hintText: {
     fontFamily: Fonts.mono,
     fontSize: 11,
-    color: Colors.textMuted,
   },
 });

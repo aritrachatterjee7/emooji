@@ -4,19 +4,19 @@ import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, Platform, KeyboardAvoidingView,
 } from 'react-native';
-import { Colors, Fonts, Radius, Spacing } from '../constants/tokens';
+import { Fonts, Radius, Spacing } from '../constants/tokens';
+import { useTheme } from '../context/ThemeContext';
 import { parseMarkdownNative, parseInline } from '../utils/markdown';
 
-// ── Inline markdown ────────────────────────────────────────────────────────
-function InlineText({ text, style }) {
+function InlineText({ text, style, colors }) {
   const parts = parseInline(text);
   return (
     <Text style={style}>
       {parts.map((p, i) => (
         <Text key={i} style={[
-          p.bold   && styles.bold,
-          p.italic && styles.italic,
-          p.code   && styles.inlineCode,
+          p.bold   && { fontFamily: Fonts.displayBold, color: colors.textPrimary },
+          p.italic && { fontStyle: 'italic', color: colors.textSecondary },
+          p.code   && { fontFamily: Fonts.mono, fontSize: 11, color: colors.green },
         ]}>
           {p.text}
         </Text>
@@ -25,69 +25,83 @@ function InlineText({ text, style }) {
   );
 }
 
-function MarkdownSegment({ seg }) {
-  if (seg.type === 'spacer')  return <View style={{ height: 5 }} />;
-  if (seg.type === 'h2')      return <InlineText text={seg.text} style={styles.mdH2} />;
-  if (seg.type === 'h3')      return <InlineText text={seg.text} style={styles.mdH3} />;
-  if (seg.type === 'code')    return <Text style={styles.mdCode}>{seg.text}</Text>;
-  if (seg.type === 'bullet')  return (
-    <View style={styles.bulletRow}>
-      <Text style={styles.bulletDot}>·</Text>
-      <InlineText text={seg.text} style={styles.mdPara} />
+function MarkdownSegment({ seg, colors }) {
+  if (seg.type === 'spacer') return <View style={{ height: 5 }} />;
+  if (seg.type === 'h2')     return <InlineText text={seg.text} style={{ fontFamily: Fonts.displayBold, fontSize: 14, color: colors.textPrimary, marginVertical: 4 }} colors={colors} />;
+  if (seg.type === 'h3')     return <InlineText text={seg.text} style={{ fontFamily: Fonts.bodyMedium, fontSize: 13, color: colors.textPrimary, marginVertical: 3 }} colors={colors} />;
+  if (seg.type === 'code')   return <Text style={{ fontFamily: Fonts.mono, fontSize: 11, color: colors.textSecondary, backgroundColor: colors.bgOverlay, padding: 8, borderRadius: Radius.sm, marginVertical: 4 }}>{seg.text}</Text>;
+  if (seg.type === 'bullet') return (
+    <View style={{ flexDirection: 'row', gap: 7, marginVertical: 1 }}>
+      <Text style={{ fontFamily: Fonts.mono, fontSize: 14, color: colors.green, lineHeight: 20 }}>·</Text>
+      <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: 13, color: colors.textPrimary, lineHeight: 20 }} colors={colors} />
     </View>
   );
-  return <InlineText text={seg.text} style={styles.mdPara} />;
+  return <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: 13, color: colors.textPrimary, lineHeight: 20 }} colors={colors} />;
 }
 
-function BubbleContent({ content }) {
+function BubbleContent({ content, colors }) {
   return (
     <View>
       {parseMarkdownNative(content).map((seg, i) => (
-        <MarkdownSegment key={i} seg={seg} />
+        <MarkdownSegment key={i} seg={seg} colors={colors} />
       ))}
     </View>
   );
 }
 
-// ── Typing indicator ───────────────────────────────────────────────────────
-function TypingIndicator() {
+function TypingIndicator({ colors }) {
   return (
     <View style={styles.msgRow}>
-      <View style={styles.avatar}><Text style={styles.avatarEmoji}>🐄</Text></View>
-      <View style={[styles.bubble, styles.bubbleAsst]}>
+      <View style={[styles.avatar, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
+        <Text style={styles.avatarEmoji}>🐄</Text>
+      </View>
+      <View style={[styles.bubble, { backgroundColor: colors.bubbleAsst, borderColor: colors.border, borderBottomLeftRadius: 4 }]}>
         <View style={styles.dots}>
-          <View style={[styles.dot, { opacity: 1.0 }]} />
-          <View style={[styles.dot, { opacity: 0.6 }]} />
-          <View style={[styles.dot, { opacity: 0.3 }]} />
+          <View style={[styles.dot, { backgroundColor: colors.green, opacity: 1.0 }]} />
+          <View style={[styles.dot, { backgroundColor: colors.green, opacity: 0.6 }]} />
+          <View style={[styles.dot, { backgroundColor: colors.green, opacity: 0.3 }]} />
         </View>
       </View>
     </View>
   );
 }
 
-// ── Single message ─────────────────────────────────────────────────────────
-function ChatMessage({ item }) {
+function ChatMessage({ item, colors }) {
   const isUser = item.role === 'user';
   return (
     <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
-      {!isUser && <View style={styles.avatar}><Text style={styles.avatarEmoji}>🐄</Text></View>}
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAsst]}>
-        <BubbleContent content={item.content} />
-        <Text style={styles.msgTime}>{item.time}</Text>
+      {!isUser && (
+        <View style={[styles.avatar, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
+          <Text style={styles.avatarEmoji}>🐄</Text>
+        </View>
+      )}
+      <View style={[
+        styles.bubble,
+        isUser
+          ? { backgroundColor: colors.bubbleUser, borderColor: 'rgba(15,34,68,0.7)', borderBottomRightRadius: 4 }
+          : { backgroundColor: colors.bubbleAsst, borderColor: colors.border, borderBottomLeftRadius: 4 },
+      ]}>
+        <BubbleContent content={item.content} colors={colors} />
+        <Text style={[styles.msgTime, { color: colors.textMuted }]}>{item.time}</Text>
       </View>
-      {isUser && <View style={styles.avatar}><Text style={styles.avatarEmoji}>👤</Text></View>}
+      {isUser && (
+        <View style={[styles.avatar, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
+          <Text style={styles.avatarEmoji}>👤</Text>
+        </View>
+      )}
     </View>
   );
 }
 
-// ── Welcome ────────────────────────────────────────────────────────────────
-function WelcomeMessage() {
+function WelcomeMessage({ colors }) {
   return (
     <View style={styles.msgRow}>
-      <View style={styles.avatar}><Text style={styles.avatarEmoji}>🐄</Text></View>
-      <View style={[styles.bubble, styles.bubbleAsst, styles.bubbleWelcome]}>
-        <Text style={styles.mdPara}>
-          <Text style={styles.bold}>Welcome to eMooJI.</Text>
+      <View style={[styles.avatar, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
+        <Text style={styles.avatarEmoji}>🐄</Text>
+      </View>
+      <View style={[styles.bubble, { backgroundColor: colors.bubbleAsst, borderColor: colors.greenBorder, borderBottomLeftRadius: 4, maxWidth: '90%' }]}>
+        <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: colors.textPrimary, lineHeight: 20 }}>
+          <Text style={{ fontFamily: Fonts.displayBold, color: colors.textPrimary }}>Welcome to eMooJI.</Text>
           {' '}I connect to real satellite databases to answer questions about any field in Europe.
         </Text>
         {[
@@ -95,18 +109,20 @@ function WelcomeMessage() {
           ['2', 'Ask any question — or tap a quick-analysis chip above'],
         ].map(([n, t]) => (
           <View key={n} style={styles.step}>
-            <View style={styles.stepNum}><Text style={styles.stepNumText}>{n}</Text></View>
-            <Text style={styles.stepText}>{t}</Text>
+            <View style={[styles.stepNum, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}>
+              <Text style={[styles.stepNumText, { color: colors.green }]}>{n}</Text>
+            </View>
+            <Text style={{ flex: 1, fontFamily: Fonts.body, fontSize: 12, color: colors.textSecondary, lineHeight: 18 }}>{t}</Text>
           </View>
         ))}
-        <Text style={styles.msgTime}>now</Text>
+        <Text style={[styles.msgTime, { color: colors.textMuted }]}>now</Text>
       </View>
     </View>
   );
 }
 
-// ── Main export ────────────────────────────────────────────────────────────
 export function ChatPanel({ messages, isLoading, onSend, onClearChat }) {
+  const { colors } = useTheme();
   const [text, setText] = useState('');
   const scrollRef = useRef(null);
 
@@ -128,87 +144,69 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat }) {
     ? (e) => { if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) { e.preventDefault(); handleSend(); } }
     : undefined;
 
-  return (
-    Platform.OS === 'web' ? (
-      <View style={styles.panel}>
-        <Inner
-          text={text} setText={setText}
-          messages={messages} isLoading={isLoading}
-          scrollRef={scrollRef}
-          handleSend={handleSend} handleKey={handleKey}
-          onClearChat={onClearChat}
-        />
-      </View>
-    ) : (
-      <KeyboardAvoidingView
-        style={styles.panel}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={52}
-      >
-        <Inner
-          text={text} setText={setText}
-          messages={messages} isLoading={isLoading}
-          scrollRef={scrollRef}
-          handleSend={handleSend} handleKey={handleKey}
-          onClearChat={onClearChat}
-        />
-      </KeyboardAvoidingView>
-    )
-  );
-}
-
-function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, handleKey, onClearChat }) {
-  return (
+  const inner = (
     <>
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.bgElevated, borderBottomColor: colors.border }]}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Field Analysis</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Field Analysis</Text>
           <TouchableOpacity onPress={onClearChat} style={styles.clearBtn} activeOpacity={0.7}>
-            <Text style={styles.clearBtnText}>✕</Text>
+            <Text style={[styles.clearBtnText, { color: colors.textMuted }]}>✕</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.sub}>Draw any field · Ask in plain language · Real satellite data</Text>
+        <Text style={[styles.sub, { color: colors.textMuted }]}>Draw any field · Ask in plain language · Real satellite data</Text>
       </View>
 
       <ScrollView
         ref={scrollRef}
-        style={styles.feed}
+        style={[styles.feed, { backgroundColor: colors.bgSurface }]}
         contentContainerStyle={styles.feedContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
-        <WelcomeMessage />
-        {messages.map((m, i) => <ChatMessage key={i} item={m} />)}
-        {isLoading && <TypingIndicator />}
+        <WelcomeMessage colors={colors} />
+        {messages.map((m, i) => <ChatMessage key={i} item={m} colors={colors} />)}
+        {isLoading && <TypingIndicator colors={colors} />}
         <View style={{ height: 12 }} />
       </ScrollView>
 
-      <View style={styles.inputArea}>
-        <View style={styles.inputRow}>
+      <View style={[styles.inputArea, { borderTopColor: colors.border, backgroundColor: colors.bgSurface }]}>
+        <View style={[styles.inputRow, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { color: colors.textPrimary }]}
             value={text}
             onChangeText={setText}
             placeholder="Ask about this field…"
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             multiline
             maxHeight={100}
             onKeyPress={handleKey}
             blurOnSubmit={false}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, (!text.trim() || isLoading) && styles.sendDisabled]}
+            style={[styles.sendBtn, { backgroundColor: (!text.trim() || isLoading) ? colors.bgOverlay : colors.green }]}
             onPress={handleSend}
             disabled={!text.trim() || isLoading}
             activeOpacity={0.8}
           >
-            <Text style={[styles.sendIcon, (!text.trim() || isLoading) && { color: Colors.textMuted }]}>➤</Text>
+            <Text style={[styles.sendIcon, { color: (!text.trim() || isLoading) ? colors.textMuted : '#000' }]}>➤</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.footer}>JackDaw GeoAI · PoliRuralPlus · Copernicus</Text>
+        <Text style={[styles.footer, { color: colors.textMuted }]}>JackDaw GeoAI · PoliRuralPlus · Copernicus</Text>
       </View>
     </>
+  );
+
+  return Platform.OS === 'web' ? (
+    <View style={[styles.panel, { backgroundColor: colors.bgSurface }]}>{inner}</View>
+  ) : (
+    <KeyboardAvoidingView
+      style={[styles.panel, { backgroundColor: colors.bgSurface }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={52}
+    >
+      {inner}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -216,92 +214,39 @@ const styles = StyleSheet.create({
   panel: {
     flex: 1,
     flexDirection: 'column',
-    backgroundColor: Colors.bgSurface,
     ...Platform.select({ web: { overflow: 'hidden' } }),
   },
   header: {
     flexShrink: 0,
     padding: Spacing.md,
     paddingBottom: 9,
-    backgroundColor: Colors.bgElevated,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
   headerRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
-  title:        { fontFamily: Fonts.display, fontSize: 15, color: Colors.textPrimary, letterSpacing: -0.3 },
-  sub:          { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
+  title:        { fontFamily: Fonts.displayBold, fontSize: 15, letterSpacing: -0.3 },
+  sub:          { fontFamily: Fonts.mono, fontSize: 10 },
   clearBtn:     { padding: 6 },
-  clearBtnText: { fontSize: 14, color: Colors.textMuted },
-  rowScroll:    { flexShrink: 0 },
-  rowContent:   {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 7,
-    gap: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
+  clearBtnText: { fontSize: 14 },
   feed: {
     flex: 1,
     ...Platform.select({ web: { minHeight: 0 } }),
   },
-  feedContent: {
-    padding: Spacing.md,
-    gap: 12,
-  },
-  msgRow:     { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
-  msgRowUser: { flexDirection: 'row-reverse' },
-  avatar:      { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarEmoji: { fontSize: 14 },
-  bubble: {
-    maxWidth: '82%',
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  bubbleUser:    { backgroundColor: Colors.bubbleUser, borderColor: 'rgba(15,34,68,0.7)', borderBottomRightRadius: 4 },
-  bubbleAsst:    { backgroundColor: Colors.bubbleAsst, borderBottomLeftRadius: 4 },
-  bubbleWelcome: { borderColor: Colors.greenBorder, maxWidth: '90%' },
-  msgTime: { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, marginTop: 6 },
-  dots: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 4 },
-  dot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.green },
-  mdPara:    { fontFamily: Fonts.body, fontSize: 13, color: Colors.textPrimary, lineHeight: 20 },
-  mdH2:      { fontFamily: Fonts.display, fontSize: 14, color: Colors.textPrimary, marginVertical: 4 },
-  mdH3:      { fontFamily: Fonts.bodyMedium, fontSize: 13, color: Colors.textPrimary, marginVertical: 3 },
-  mdCode:    { fontFamily: Fonts.mono, fontSize: 11, color: Colors.textSecondary, backgroundColor: Colors.bgOverlay, padding: 8, borderRadius: Radius.sm, marginVertical: 4 },
-  bulletRow: { flexDirection: 'row', gap: 7, marginVertical: 1 },
-  bulletDot: { fontFamily: Fonts.mono, fontSize: 14, color: Colors.green, lineHeight: 20 },
-  bold:       { fontFamily: Fonts.display, color: Colors.textPrimary },
-  italic:     { fontStyle: 'italic', color: Colors.textSecondary },
-  inlineCode: { fontFamily: Fonts.mono, fontSize: 11, color: Colors.green },
-  step:        { flexDirection: 'row', gap: 8, marginTop: 9, alignItems: 'flex-start' },
-  stepNum:     { width: 18, height: 18, borderRadius: 9, backgroundColor: Colors.greenTrace, borderWidth: 1, borderColor: Colors.greenBorder, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
-  stepNumText: { fontFamily: Fonts.mono, fontSize: 9, color: Colors.green },
-  stepText:    { flex: 1, fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary, lineHeight: 18 },
-  inputArea: {
-    flexShrink: 0,
-    padding: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    backgroundColor: Colors.bgSurface,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    backgroundColor: Colors.bgElevated,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    borderColor: Colors.borderMid,
-    paddingLeft: 14,
-    paddingRight: 6,
-    paddingVertical: 6,
-  },
-  input:        { flex: 1, fontFamily: Fonts.body, fontSize: 14, color: Colors.textPrimary, maxHeight: 100, paddingVertical: 2 },
-  sendBtn:      { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
-  sendDisabled: { backgroundColor: Colors.bgOverlay },
-  sendIcon:     { fontSize: 14, color: '#000' },
-  footer:       { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
+  feedContent:  { padding: Spacing.md, gap: 12 },
+  msgRow:       { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
+  msgRowUser:   { flexDirection: 'row-reverse' },
+  avatar:       { width: 28, height: 28, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarEmoji:  { fontSize: 14 },
+  bubble:       { maxWidth: '82%', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16, borderWidth: 1 },
+  msgTime:      { fontFamily: Fonts.mono, fontSize: 9, marginTop: 6 },
+  dots:         { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 4 },
+  dot:          { width: 6, height: 6, borderRadius: 3 },
+  step:         { flexDirection: 'row', gap: 8, marginTop: 9, alignItems: 'flex-start' },
+  stepNum:      { width: 18, height: 18, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
+  stepNumText:  { fontFamily: Fonts.mono, fontSize: 9 },
+  inputArea:    { flexShrink: 0, padding: Spacing.sm, borderTopWidth: 1 },
+  inputRow:     { flexDirection: 'row', alignItems: 'flex-end', gap: 8, borderRadius: Radius.xl, borderWidth: 1, paddingLeft: 14, paddingRight: 6, paddingVertical: 6 },
+  input:        { flex: 1, fontFamily: Fonts.body, fontSize: 14, maxHeight: 100, paddingVertical: 2 },
+  sendBtn:      { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  sendIcon:     { fontSize: 14 },
+  footer:       { fontFamily: Fonts.mono, fontSize: 9, textAlign: 'center', marginTop: 6 },
 });

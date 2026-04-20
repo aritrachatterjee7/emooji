@@ -2,10 +2,12 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Fonts, Radius, BOTTOM_NAV_HEIGHT } from '../constants/tokens';
+import { Fonts, Radius, BOTTOM_NAV_HEIGHT } from '../constants/tokens';
+import { useTheme } from '../context/ThemeContext';
 
 export function BottomNav({ activePanel, onSwitch, unreadCount }) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
   const tabs = [
     { key: 'map',  label: 'Map',      icon: '🗺' },
@@ -13,7 +15,14 @@ export function BottomNav({ activePanel, onSwitch, unreadCount }) {
   ];
 
   return (
-    <View style={[styles.nav, { paddingBottom: insets.bottom || 8 }]}>
+    <View style={[
+      styles.nav,
+      {
+        paddingBottom: insets.bottom || 8,
+        backgroundColor: colors.bgGlass,
+        borderTopColor: colors.border,
+      }
+    ]}>
       {tabs.map(tab => {
         const active = activePanel === tab.key;
         return (
@@ -23,11 +32,13 @@ export function BottomNav({ activePanel, onSwitch, unreadCount }) {
             onPress={() => onSwitch(tab.key)}
             activeOpacity={0.7}
           >
-            {active && <View style={styles.activeBar} />}
+            {active && <View style={[styles.activeBar, { backgroundColor: colors.green }]} />}
             <Text style={styles.icon}>{tab.icon}</Text>
-            <Text style={[styles.label, active && styles.labelActive]}>{tab.label}</Text>
+            <Text style={[styles.label, { color: active ? colors.green : colors.textMuted }]}>
+              {tab.label}
+            </Text>
             {tab.key === 'chat' && unreadCount > 0 && (
-              <View style={styles.badge}>
+              <View style={[styles.badge, { backgroundColor: colors.danger }]}>
                 <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
               </View>
             )}
@@ -42,9 +53,7 @@ const styles = StyleSheet.create({
   nav: {
     flexDirection: 'row',
     height: BOTTOM_NAV_HEIGHT,
-    backgroundColor: Colors.bgGlass,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
     ...Platform.select({
       ios:     { shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: -2 } },
       android: { elevation: 8 },
@@ -63,19 +72,16 @@ const styles = StyleSheet.create({
     top: 0, left: '50%',
     marginLeft: -12,
     width: 24, height: 2,
-    backgroundColor: Colors.green,
     borderBottomLeftRadius: 2,
     borderBottomRightRadius: 2,
   },
-  icon:        { fontSize: 18 },
-  label:       { fontFamily: Fonts.body, fontSize: 11, color: Colors.textMuted },
-  labelActive: { color: Colors.green },
+  icon:      { fontSize: 18 },
+  label:     { fontFamily: Fonts.body, fontSize: 11 },
   badge: {
     position: 'absolute',
     top: 6, right: 24,
     minWidth: 16, height: 16,
     borderRadius: 8,
-    backgroundColor: Colors.danger,
     alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 4,
   },
