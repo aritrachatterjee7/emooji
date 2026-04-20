@@ -3,7 +3,11 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkColors, LightColors } from '../constants/tokens';
 
-const ThemeContext = createContext(null);
+const ThemeContext = createContext({
+  isDark: true,
+  toggleTheme: () => {},
+  colors: DarkColors,
+});
 
 const STORAGE_KEY = 'emooji_theme';
 
