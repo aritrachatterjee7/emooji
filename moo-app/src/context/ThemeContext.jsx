@@ -3,9 +3,13 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkColors, LightColors } from '../constants/tokens';
 
-// ── Default value ensures useTheme() never returns null ─────────────────────
-// This prevents crashes during Expo static rendering when the provider
-// hasn't mounted yet but components are already being evaluated.
+// ── Re-export tokens so all existing component imports keep working ──────────
+// Components importing { Colors, Fonts, Radius, Spacing } from ThemeContext
+// will now get the correct values from tokens.js
+export { DarkColors as Colors, LightColors, DarkColors } from '../constants/tokens';
+export { Fonts, Radius, Spacing, NAV_HEIGHT, BOTTOM_NAV_HEIGHT, CHAT_WIDTH } from '../constants/tokens';
+
+// ── Default value ensures useTheme() never returns null ──────────────────────
 const ThemeContext = createContext({
   isDark:      true,
   toggleTheme: () => {},
@@ -15,18 +19,16 @@ const ThemeContext = createContext({
 const STORAGE_KEY = 'emooji_theme';
 
 export function ThemeProvider({ children }) {
-  const [isDark, setIsDark] = useState(true); // default dark until loaded
+  const [isDark, setIsDark] = useState(true);
 
-  // ── Load saved preference on mount ────────────────────────────
+  // Load saved preference on mount
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then(val => {
       if (val !== null) setIsDark(val === 'dark');
-    }).catch(() => {
-      // if storage fails, stay on default dark
-    });
+    }).catch(() => {});
   }, []);
 
-  // ── Toggle and persist ─────────────────────────────────────────
+  // Toggle and persist
   const toggleTheme = useCallback(() => {
     setIsDark(prev => {
       const next = !prev;

@@ -1,14 +1,9 @@
 // src/components/FieldMap.native.jsx
-// Native-only — uses react-native-maps
-// Polygon draw: tap vertices → double-tap to close
-// Rectangle draw: tap + drag corner to corner
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, PanResponder } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import MapView, { Polygon, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { Colors, Radius, Fonts } from '../context/ThemeContext';
+import { Colors, Radius, Fonts } from '../constants/tokens';
 
-// Convert screen tap to coordinate (MapView gives us lat/lng directly)
 function coordsToGeoJSON(coords) {
   return {
     type: 'Polygon',
@@ -44,12 +39,11 @@ function calcStats(coords) {
 
 export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawMode, onDrawModeChange }) {
   const mapRef    = useRef(null);
-  const [vertices, setVertices]         = useState([]);       // polygon draw vertices
-  const [rectStart, setRectStart]       = useState(null);     // rectangle first corner
-  const [drawnCoords, setDrawnCoords]   = useState(null);     // final drawn polygon
-  const [mapType, setMapType]           = useState('standard');
+  const [vertices, setVertices]       = useState([]);
+  const [rectStart, setRectStart]     = useState(null);
+  const [drawnCoords, setDrawnCoords] = useState(null);
+  const [mapType, setMapType]         = useState('standard');
 
-  // Sync mapLayer prop
   useEffect(() => {
     setMapType(mapLayer === 'satellite' ? 'satellite' : 'standard');
   }, [mapLayer]);
@@ -57,16 +51,13 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
   const handleMapPress = useCallback((e) => {
     if (!drawMode) return;
     const coord = e.nativeEvent.coordinate;
-
     if (drawMode === 'polygon') {
       setVertices(prev => [...prev, coord]);
     }
-
     if (drawMode === 'rectangle') {
       if (!rectStart) {
         setRectStart(coord);
       } else {
-        // Build rectangle from two corners
         const coords = [
           { latitude: rectStart.latitude,  longitude: rectStart.longitude },
           { latitude: rectStart.latitude,  longitude: coord.longitude },
@@ -80,7 +71,6 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
   }, [drawMode, rectStart]);
 
   const handleMapLongPress = useCallback(() => {
-    // Long press = close polygon in polygon draw mode
     if (drawMode === 'polygon' && vertices.length >= 3) {
       finalisePolygon(vertices);
     }
@@ -102,9 +92,6 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
     onFieldCleared();
   }, [onFieldCleared]);
 
-  // Preview rectangle while placing second corner
-  const previewRect = rectStart ? null : null; // drawn dynamically via Polygon below
-
   const isDrawing = drawMode === 'polygon' || drawMode === 'rectangle';
 
   return (
@@ -121,42 +108,24 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
         zoomEnabled
         rotateEnabled={false}
       >
-        {/* In-progress polygon vertices */}
         {drawMode === 'polygon' && vertices.length > 0 && (
-          <Polygon
-            coordinates={vertices}
-            strokeColor={Colors.green}
-            fillColor={Colors.greenTrace}
-            strokeWidth={2}
-          />
+          <Polygon coordinates={vertices} strokeColor={Colors.green} fillColor={Colors.greenTrace} strokeWidth={2} />
         )}
-
-        {/* Vertex dots */}
         {drawMode === 'polygon' && vertices.map((v, i) => (
           <Marker key={i} coordinate={v} anchor={{ x: 0.5, y: 0.5 }}>
             <View style={styles.vertex} />
           </Marker>
         ))}
-
-        {/* Rectangle first-corner marker */}
         {drawMode === 'rectangle' && rectStart && (
           <Marker coordinate={rectStart} anchor={{ x: 0.5, y: 0.5 }}>
             <View style={[styles.vertex, styles.vertexRect]} />
           </Marker>
         )}
-
-        {/* Finished polygon */}
         {drawnCoords && (
-          <Polygon
-            coordinates={drawnCoords}
-            strokeColor={Colors.green}
-            fillColor={Colors.greenTrace}
-            strokeWidth={2}
-          />
+          <Polygon coordinates={drawnCoords} strokeColor={Colors.green} fillColor={Colors.greenTrace} strokeWidth={2} />
         )}
       </MapView>
 
-      {/* Drawing instruction overlay */}
       {isDrawing && (
         <View style={styles.hint}>
           <Text style={styles.hintText}>
@@ -177,12 +146,8 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
         </View>
       )}
 
-      {/* Undo last vertex in polygon mode */}
       {drawMode === 'polygon' && vertices.length > 0 && (
-        <TouchableOpacity
-          style={styles.undoBtn}
-          onPress={() => setVertices(v => v.slice(0, -1))}
-        >
+        <TouchableOpacity style={styles.undoBtn} onPress={() => setVertices(v => v.slice(0, -1))}>
           <Text style={styles.undoText}>↩ Undo</Text>
         </TouchableOpacity>
       )}
@@ -193,7 +158,6 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map:       { flex: 1 },
-
   vertex: {
     width: 12, height: 12,
     borderRadius: 6,
@@ -201,10 +165,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
   },
-  vertexRect: {
-    backgroundColor: Colors.warning,
-  },
-
+  vertexRect: { backgroundColor: Colors.warning },
   hint: {
     position: 'absolute',
     bottom: 80,
@@ -232,12 +193,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderMid,
   },
-  cancelText: {
-    fontFamily: Fonts.body,
-    fontSize: 12,
-    color: Colors.danger,
-  },
-
+  cancelText: { fontFamily: Fonts.body, fontSize: 12, color: Colors.danger },
   undoBtn: {
     position: 'absolute',
     bottom: 140,
@@ -249,9 +205,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  undoText: {
-    fontFamily: Fonts.body,
-    fontSize: 13,
-    color: Colors.textSecondary,
-  },
+  undoText: { fontFamily: Fonts.body, fontSize: 13, color: Colors.textSecondary },
 });

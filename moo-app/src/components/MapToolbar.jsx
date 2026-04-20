@@ -1,7 +1,7 @@
 // src/components/MapToolbar.jsx
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, ScrollView, Platform } from 'react-native';
-import { Colors, Fonts, Radius, Spacing } from '../context/ThemeContext';
+import { Colors, Fonts, Radius, Spacing } from '../constants/tokens';
 
 function ToolBtn({ label, icon, onPress, variant = 'default', active = false }) {
   return (
@@ -41,45 +41,14 @@ export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLaye
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
       >
-        {/* Draw tools */}
-        <ToolBtn
-          label="Polygon"
-          icon="△"
-          variant="primary"
-          active={drawMode === 'polygon'}
-          onPress={onPolygon}
-        />
-        <ToolBtn
-          label="Rectangle"
-          icon="▭"
-          active={drawMode === 'rectangle'}
-          onPress={onRectangle}
-        />
-        <ToolBtn
-          label="Clear"
-          icon="✕"
-          variant="danger"
-          onPress={onClear}
-        />
-
+        <ToolBtn label="Polygon"   icon="△" variant="primary" active={drawMode === 'polygon'}   onPress={onPolygon} />
+        <ToolBtn label="Rectangle" icon="▭" active={drawMode === 'rectangle'} onPress={onRectangle} />
+        <ToolBtn label="Clear"     icon="✕" variant="danger"  onPress={onClear} />
         <View style={styles.sep} />
-
-        {/* Layer toggle */}
-        <ToolBtn
-          label="Sat"
-          icon="◉"
-          active={mapLayer === 'satellite'}
-          onPress={onLayerSat}
-        />
-        <ToolBtn
-          label="Street"
-          icon="⌂"
-          active={mapLayer === 'street'}
-          onPress={onLayerStreet}
-        />
+        <ToolBtn label="Sat"    icon="◉" active={mapLayer === 'satellite'} onPress={onLayerSat} />
+        <ToolBtn label="Street" icon="⌂" active={mapLayer === 'street'}   onPress={onLayerStreet} />
       </ScrollView>
 
-      {/* Hint */}
       {!fieldStats && (
         <View style={styles.hint} pointerEvents="none">
           <Text style={styles.hintText}>△ Draw a field to begin</Text>
@@ -108,7 +77,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.borderMid,
     marginHorizontal: 5,
   },
-
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -120,27 +88,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  btnPrimary: {
-    backgroundColor: Colors.greenTrace,
-    borderColor: Colors.greenBorder,
-  },
-  btnDanger: {
-    backgroundColor: Colors.bgElevated,
-    borderColor: Colors.border,
-  },
-  btnActive: {
-    backgroundColor: Colors.greenTrace,
-    borderColor: Colors.greenBorder,
-  },
-
+  btnPrimary: { backgroundColor: Colors.greenTrace, borderColor: Colors.greenBorder },
+  btnDanger:  { backgroundColor: Colors.bgElevated, borderColor: Colors.border },
+  btnActive:  { backgroundColor: Colors.greenTrace, borderColor: Colors.greenBorder },
   btnIcon:        { fontSize: 12, color: Colors.textSecondary },
   btnIconPrimary: { color: Colors.green },
   btnIconActive:  { color: Colors.green },
-
   btnLabel:        { fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary },
   btnLabelPrimary: { color: Colors.green },
   btnLabelActive:  { color: Colors.green },
-
   hint: {
     paddingHorizontal: Spacing.md,
     paddingBottom: 6,

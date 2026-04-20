@@ -4,10 +4,8 @@ import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, Platform, KeyboardAvoidingView,
 } from 'react-native';
-import { Colors, Fonts, Radius, Spacing } from '../context/ThemeContext';
+import { Colors, Fonts, Radius, Spacing } from '../constants/tokens';
 import { parseMarkdownNative, parseInline } from '../utils/markdown';
-
-
 
 // ── Inline markdown ────────────────────────────────────────────────────────
 function InlineText({ text, style }) {
@@ -112,9 +110,7 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat }) {
   const [text, setText] = useState('');
   const scrollRef = useRef(null);
 
-  // Scroll to bottom after every render that adds content
   useEffect(() => {
-    // requestAnimationFrame ensures DOM has painted before we scroll
     const raf = requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
     });
@@ -133,8 +129,6 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat }) {
     : undefined;
 
   return (
-    // On web: use a plain View because KeyboardAvoidingView causes height issues in browsers
-    // On native: use KeyboardAvoidingView to push content above keyboard
     Platform.OS === 'web' ? (
       <View style={styles.panel}>
         <Inner
@@ -163,11 +157,9 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat }) {
   );
 }
 
-// Inner layout — separated so it's reused by both web View and native KAV
 function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, handleKey, onClearChat }) {
   return (
     <>
-      {/* Header — never scrolls */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Text style={styles.title}>Field Analysis</Text>
@@ -178,11 +170,6 @@ function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, hand
         <Text style={styles.sub}>Draw any field · Ask in plain language · Real satellite data</Text>
       </View>
 
-
-
-      {/* Messages — THIS is the key fix:
-          flex:1 + minHeight:0 forces it to fill remaining space on web.
-          Without minHeight:0, react-native-web ignores flex:1 on ScrollView. */}
       <ScrollView
         ref={scrollRef}
         style={styles.feed}
@@ -197,7 +184,6 @@ function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, hand
         <View style={{ height: 12 }} />
       </ScrollView>
 
-      {/* Input — flexShrink:0 = always visible, always at bottom */}
       <View style={styles.inputArea}>
         <View style={styles.inputRow}>
           <TextInput
@@ -226,18 +212,13 @@ function Inner({ text, setText, messages, isLoading, scrollRef, handleSend, hand
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  // Root — column, fills ALL available height from parent
   panel: {
     flex: 1,
     flexDirection: 'column',
     backgroundColor: Colors.bgSurface,
-    // Critical for web: without overflow hidden the panel can grow past viewport
     ...Platform.select({ web: { overflow: 'hidden' } }),
   },
-
-  // Header
   header: {
     flexShrink: 0,
     padding: Spacing.md,
@@ -251,10 +232,8 @@ const styles = StyleSheet.create({
   sub:          { fontFamily: Fonts.mono, fontSize: 10, color: Colors.textMuted },
   clearBtn:     { padding: 6 },
   clearBtnText: { fontSize: 14, color: Colors.textMuted },
-
-  // Badges + chips horizontal scrolls
-  rowScroll:   { flexShrink: 0 },
-  rowContent:  {
+  rowScroll:    { flexShrink: 0 },
+  rowContent:   {
     flexDirection: 'row',
     paddingHorizontal: Spacing.sm,
     paddingVertical: 7,
@@ -262,25 +241,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  // Feed — THE critical fix for web
   feed: {
     flex: 1,
-    // minHeight: 0 is the web-specific fix that makes flex:1 work on ScrollView
-    // react-native-web maps this to CSS min-height:0 which prevents overflow
     ...Platform.select({ web: { minHeight: 0 } }),
   },
   feedContent: {
     padding: Spacing.md,
     gap: 12,
   },
-
-  // Messages
   msgRow:     { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   msgRowUser: { flexDirection: 'row-reverse' },
-
   avatar:      { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   avatarEmoji: { fontSize: 14 },
-
   bubble: {
     maxWidth: '82%',
     paddingHorizontal: 13,
@@ -292,14 +264,9 @@ const styles = StyleSheet.create({
   bubbleUser:    { backgroundColor: Colors.bubbleUser, borderColor: 'rgba(15,34,68,0.7)', borderBottomRightRadius: 4 },
   bubbleAsst:    { backgroundColor: Colors.bubbleAsst, borderBottomLeftRadius: 4 },
   bubbleWelcome: { borderColor: Colors.greenBorder, maxWidth: '90%' },
-
   msgTime: { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, marginTop: 6 },
-
-  // Typing dots
   dots: { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 4 },
   dot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.green },
-
-  // Markdown
   mdPara:    { fontFamily: Fonts.body, fontSize: 13, color: Colors.textPrimary, lineHeight: 20 },
   mdH2:      { fontFamily: Fonts.display, fontSize: 14, color: Colors.textPrimary, marginVertical: 4 },
   mdH3:      { fontFamily: Fonts.bodyMedium, fontSize: 13, color: Colors.textPrimary, marginVertical: 3 },
@@ -309,14 +276,10 @@ const styles = StyleSheet.create({
   bold:       { fontFamily: Fonts.display, color: Colors.textPrimary },
   italic:     { fontStyle: 'italic', color: Colors.textSecondary },
   inlineCode: { fontFamily: Fonts.mono, fontSize: 11, color: Colors.green },
-
-  // Welcome steps
   step:        { flexDirection: 'row', gap: 8, marginTop: 9, alignItems: 'flex-start' },
   stepNum:     { width: 18, height: 18, borderRadius: 9, backgroundColor: Colors.greenTrace, borderWidth: 1, borderColor: Colors.greenBorder, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
   stepNumText: { fontFamily: Fonts.mono, fontSize: 9, color: Colors.green },
   stepText:    { flex: 1, fontFamily: Fonts.body, fontSize: 12, color: Colors.textSecondary, lineHeight: 18 },
-
-  // Input — flexShrink:0 guarantees it never moves
   inputArea: {
     flexShrink: 0,
     padding: Spacing.sm,
@@ -336,9 +299,9 @@ const styles = StyleSheet.create({
     paddingRight: 6,
     paddingVertical: 6,
   },
-  input:       { flex: 1, fontFamily: Fonts.body, fontSize: 14, color: Colors.textPrimary, maxHeight: 100, paddingVertical: 2 },
-  sendBtn:     { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
-  sendDisabled:{ backgroundColor: Colors.bgOverlay },
-  sendIcon:    { fontSize: 14, color: '#000' },
-  footer:      { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
+  input:        { flex: 1, fontFamily: Fonts.body, fontSize: 14, color: Colors.textPrimary, maxHeight: 100, paddingVertical: 2 },
+  sendBtn:      { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
+  sendDisabled: { backgroundColor: Colors.bgOverlay },
+  sendIcon:     { fontSize: 14, color: '#000' },
+  footer:       { fontFamily: Fonts.mono, fontSize: 9, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
 });
