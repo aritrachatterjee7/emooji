@@ -4,22 +4,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkColors, LightColors } from '../constants/tokens';
 
 // ── Re-export tokens so all existing component imports keep working ──────────
-// Components importing { Colors, Fonts, Radius, Spacing } from ThemeContext
-// will now get the correct values from tokens.js
 export { DarkColors as Colors, LightColors, DarkColors } from '../constants/tokens';
 export { Fonts, Radius, Spacing, NAV_HEIGHT, BOTTOM_NAV_HEIGHT, CHAT_WIDTH } from '../constants/tokens';
 
 // ── Default value ensures useTheme() never returns null ──────────────────────
 const ThemeContext = createContext({
-  isDark:      true,
+  isDark:      false,
   toggleTheme: () => {},
-  colors:      DarkColors,
+  colors:      LightColors,
 });
 
 const STORAGE_KEY = 'emooji_theme';
 
 export function ThemeProvider({ children }) {
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false); // default light
 
   // Load saved preference on mount
   useEffect(() => {
