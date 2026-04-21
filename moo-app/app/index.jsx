@@ -22,8 +22,8 @@ function now() {
 
 function AppSplash({ visible, progress, status }) {
   const opacity = useRef(new Animated.Value(1)).current;
-  const theme = useTheme();
-  const colors = theme?.colors ?? DarkColors; // ← null safety for static render
+  const theme   = useTheme();
+  const colors  = theme?.colors ?? DarkColors;
 
   useEffect(() => {
     if (!visible) {
@@ -59,7 +59,6 @@ export default function MainScreen() {
   const { width }  = useWindowDimensions();
   const isMobile   = width < MOBILE_BREAKPOINT;
 
-  // ── Theme — fall back to DarkColors if context not yet available ──────
   const theme  = useTheme();
   const colors = theme?.colors ?? DarkColors;
 
@@ -80,10 +79,11 @@ export default function MainScreen() {
   const [drawMode,   setDrawMode]   = useState(null);
 
   // ── Chat state ─────────────────────────────────────────────────
-  const [messages,    setMessages]    = useState([]);
-  const [isLoading,   setIsLoading]   = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [activePanel, setActivePanel] = useState('map');
+  const [messages,      setMessages]      = useState([]);
+  const [isLoading,     setIsLoading]     = useState(false);
+  const [streamStatus,  setStreamStatus]  = useState('');  // ← live JackDaw status text
+  const [unreadCount,   setUnreadCount]   = useState(0);
+  const [activePanel,   setActivePanel]   = useState('map');
 
   // ── PWA install ────────────────────────────────────────────────
   const [installPrompt,  setInstallPrompt]  = useState(null);
@@ -134,14 +134,21 @@ export default function MainScreen() {
   const handleSend = useCallback(async (text) => {
     appendMsg('user', text);
     setIsLoading(true);
+    setStreamStatus('Thinking…');
     try {
-      const reply = await sendMessage(text, polygon, customerId);
+      const reply = await sendMessage(
+        text,
+        polygon,
+        customerId,
+        (status) => setStreamStatus(status),  // ← progress callback fed to ThinkingIndicator
+      );
       appendMsg('assistant', reply);
       if (isMobile && activePanel === 'map') setUnreadCount(c => c + 1);
     } catch (err) {
       appendMsg('assistant', `⚠️ Could not reach analysis service.\n\nError: ${err.message}`);
     } finally {
       setIsLoading(false);
+      setStreamStatus('');
     }
   }, [sendMessage, polygon, customerId, isMobile, activePanel]);
 
@@ -179,7 +186,6 @@ export default function MainScreen() {
         onInstall={handleInstall}
       />
 
-      {/* Workspace — row on desktop, stacked on mobile */}
       <View style={[styles.workspace, !isMobile && styles.workspaceDesktop]}>
 
         {/* Map section */}
@@ -223,6 +229,7 @@ export default function MainScreen() {
           <ChatPanel
             messages={messages}
             isLoading={isLoading}
+            streamStatus={streamStatus}   // ← live status text from JackDaw SSE stream
             onSend={handleSend}
             onClearChat={handleClearChat}
             hasField={!!polygon}
@@ -256,9 +263,7 @@ const styles = StyleSheet.create({
     flex: 1,
     ...Platform.select({ web: { minHeight: 0, overflow: 'hidden' } }),
   },
-  workspaceDesktop: {
-    flexDirection: 'row',
-  },
+  workspaceDesktop: { flexDirection: 'row' },
   mapSection: {
     flex: 1,
     ...Platform.select({ web: { minHeight: 0 } }),
@@ -271,11 +276,9 @@ const styles = StyleSheet.create({
   chatSection: {
     ...Platform.select({ web: { minHeight: 0 } }),
   },
-  chatSectionMobile: {
-    flex: 1,
-  },
-  hidden:       { display: 'none' },
-  mapContainer: { flex: 1, position: 'relative' },
+  chatSectionMobile:  { flex: 1 },
+  hidden:             { display: 'none' },
+  mapContainer:       { flex: 1, position: 'relative' },
   splash: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,

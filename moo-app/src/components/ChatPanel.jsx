@@ -49,17 +49,21 @@ function BubbleContent({ content, colors }) {
   );
 }
 
-function TypingIndicator({ colors }) {
+// ── Live status indicator — replaces three dots ────────────────────────────
+// Shows streaming progress from JackDaw: "Analyzing...", "Starting tool call: get_ndvi_for_area" etc.
+function ThinkingIndicator({ statusText, colors }) {
   return (
     <View style={styles.msgRow}>
       <View style={[styles.avatar, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
         <Text style={styles.avatarEmoji}>🐄</Text>
       </View>
-      <View style={[styles.bubble, { backgroundColor: colors.bubbleAsst, borderColor: colors.border, borderBottomLeftRadius: 4 }]}>
-        <View style={styles.dots}>
-          <View style={[styles.dot, { backgroundColor: colors.green, opacity: 1.0 }]} />
-          <View style={[styles.dot, { backgroundColor: colors.green, opacity: 0.6 }]} />
-          <View style={[styles.dot, { backgroundColor: colors.green, opacity: 0.3 }]} />
+      <View style={[styles.bubble, { backgroundColor: colors.bubbleAsst, borderColor: colors.border, borderBottomLeftRadius: 4, maxWidth: '88%' }]}>
+        <View style={styles.thinkingRow}>
+          {/* Animated pulse dot */}
+          <View style={[styles.pulseDot, { backgroundColor: colors.green }]} />
+          <Text style={[styles.thinkingText, { color: colors.textSecondary }]}>
+            {statusText || 'Thinking…'}
+          </Text>
         </View>
       </View>
     </View>
@@ -121,7 +125,7 @@ function WelcomeMessage({ colors }) {
   );
 }
 
-export function ChatPanel({ messages, isLoading, onSend, onClearChat }) {
+export function ChatPanel({ messages, isLoading, streamStatus, onSend, onClearChat }) {
   const { colors } = useTheme();
   const [text, setText] = useState('');
   const scrollRef = useRef(null);
@@ -131,7 +135,7 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat }) {
       scrollRef.current?.scrollToEnd({ animated: true });
     });
     return () => cancelAnimationFrame(raf);
-  }, [messages.length, isLoading]);
+  }, [messages.length, isLoading, streamStatus]);
 
   const handleSend = useCallback(() => {
     const val = text.trim();
@@ -166,7 +170,8 @@ export function ChatPanel({ messages, isLoading, onSend, onClearChat }) {
       >
         <WelcomeMessage colors={colors} />
         {messages.map((m, i) => <ChatMessage key={i} item={m} colors={colors} />)}
-        {isLoading && <TypingIndicator colors={colors} />}
+        {/* Show live streaming status instead of three dots */}
+        {isLoading && <ThinkingIndicator statusText={streamStatus} colors={colors} />}
         <View style={{ height: 12 }} />
       </ScrollView>
 
@@ -216,21 +221,13 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     ...Platform.select({ web: { overflow: 'hidden' } }),
   },
-  header: {
-    flexShrink: 0,
-    padding: Spacing.md,
-    paddingBottom: 9,
-    borderBottomWidth: 1,
-  },
+  header:       { flexShrink: 0, padding: Spacing.md, paddingBottom: 9, borderBottomWidth: 1 },
   headerRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
   title:        { fontFamily: Fonts.displayBold, fontSize: 15, letterSpacing: -0.3 },
   sub:          { fontFamily: Fonts.mono, fontSize: 10 },
   clearBtn:     { padding: 6 },
   clearBtnText: { fontSize: 14 },
-  feed: {
-    flex: 1,
-    ...Platform.select({ web: { minHeight: 0 } }),
-  },
+  feed:         { flex: 1, ...Platform.select({ web: { minHeight: 0 } }) },
   feedContent:  { padding: Spacing.md, gap: 12 },
   msgRow:       { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   msgRowUser:   { flexDirection: 'row-reverse' },
@@ -238,8 +235,12 @@ const styles = StyleSheet.create({
   avatarEmoji:  { fontSize: 14 },
   bubble:       { maxWidth: '82%', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16, borderWidth: 1 },
   msgTime:      { fontFamily: Fonts.mono, fontSize: 9, marginTop: 6 },
-  dots:         { flexDirection: 'row', gap: 5, alignItems: 'center', paddingVertical: 4 },
-  dot:          { width: 6, height: 6, borderRadius: 3 },
+
+  // Thinking indicator
+  thinkingRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
+  pulseDot:     { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
+  thinkingText: { fontFamily: Fonts.mono, fontSize: 12, flex: 1, flexWrap: 'wrap' },
+
   step:         { flexDirection: 'row', gap: 8, marginTop: 9, alignItems: 'flex-start' },
   stepNum:      { width: 18, height: 18, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
   stepNumText:  { fontFamily: Fonts.mono, fontSize: 9 },
