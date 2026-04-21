@@ -12,8 +12,9 @@ const PROXY_BASE =
 const CFG = {
   jackdaw: { baseUrl: 'https://api.jackdaw.online' },
   proxy: {
-    tokenUrl: `${PROXY_BASE}/api/token`,
-    chatUrl:  `${PROXY_BASE}/api/chat`,
+    tokenUrl:  `${PROXY_BASE}/api/token`,
+    chatUrl:   `${PROXY_BASE}/api/chat`,
+    mcpUrl:    `${PROXY_BASE}/api/mcp/connect`, // ← routed through proxy to avoid CORS
   },
   mcp: {
     serverUrl: 'https://emooji.onrender.com/sse',
@@ -59,19 +60,21 @@ export function useJackDaw() {
   }, []);
 
   // ── Register MCP tools with JackDaw ───────────────────────────────────
-  // This tells JackDaw about your MCP server so it can call the tools
-  // (ndvi, weather, terrain, landcover, natura, grazing, private_tools)
-  // during conversations whenever relevant.
+  // Goes through proxy (/api/mcp/connect) instead of directly to JackDaw
+  // to avoid CORS errors. The proxy forwards the request with the correct
+  // Authorization header to api.jackdaw.online/mcp/connect.
   const connectMCP = useCallback(async () => {
     if (!tokenRef.current) return false;
     try {
-      const res = await fetch(`${CFG.jackdaw.baseUrl}/mcp/connect`, {
+      const res = await fetch(CFG.proxy.mcpUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${tokenRef.current}`,
         },
-        body: JSON.stringify({ server_url: CFG.mcp.serverUrl, name: CFG.mcp.name }),
+        body: JSON.stringify({
+          server_url: CFG.mcp.serverUrl,
+          name:       CFG.mcp.name,
+        }),
       });
       if (!res.ok) return false;
       const data = await res.json();
@@ -125,27 +128,20 @@ export function useJackDaw() {
   // to the correct farm/user so data is never mixed between customers.
   const sendMessage = useCallback(async (userText, polygon, customerId = null) => {
 
-    // System prompt — tells JackDaw the context for this conversation.
-    // If a polygon is drawn, it's injected here so JackDaw passes it
-    // to every MCP tool call automatically.
     const systemCtx = polygon
       ? `You are an expert agricultural and environmental analyst. The farmer has drawn a polygon on the map. Use this GeoJSON geometry in ALL relevant MCP tool calls: ${polygon}\n\nAlways fetch real data. Never fabricate NDVI, weather, or terrain values.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}. Pass this to all private MCP tool calls (get_my_paddocks, get_paddock_rating, get_animals_in_paddock, get_animal_track, get_ungrazed_paddocks, get_low_ndvi_paddocks, recommend_paddock_for_herd_move).` : ''}`
       : `You are an expert agricultural analyst. No polygon drawn yet — ask the farmer to draw a field first.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}.` : ''}`;
 
-    // Add user message to history so JackDaw has full conversation context
     historyRef.current.push({ role: 'user', content: userText });
 
-    // Build request payload
     const payload = {
       messages:    historyRef.current,
       system:      systemCtx,
-      customer_id: customerId,   // ← Firebase UID — used by private MCP tools
+      customer_id: customerId,
     };
 
-    // Attach session ID if we have one (keeps conversation threaded in JackDaw)
     if (sessionRef.current) payload.session_id = sessionRef.current;
 
-    // Attach WKT polygon if drawn (PostGIS-compatible format for spatial queries)
     if (polygon) {
       const wkt = geojsonToWKT(polygon);
       if (wkt) payload.wkt = { srid: 4326, wkt };
@@ -157,7 +153,6 @@ export function useJackDaw() {
       body: JSON.stringify(payload),
     });
 
-    // Handle auth expiry — tell user to restart rather than silently failing
     if (res.status === 401) {
       tokenRef.current = null;
       setStatus('error', 'Session expired');
@@ -172,7 +167,6 @@ export function useJackDaw() {
     const data = await res.json();
     let reply;
 
-    // Parse JackDaw response — handles multiple possible response shapes
     if (Array.isArray(data) && data.length > 0 && data[0].msg) {
       reply = data[0].msg.content;
       if (data[0].thread_id) sessionRef.current = data[0].thread_id;
@@ -181,7 +175,6 @@ export function useJackDaw() {
     else if (data.response)   { reply = data.response; }
     else                      { reply = JSON.stringify(data); }
 
-    // Add assistant reply to history for next turn
     historyRef.current.push({ role: 'assistant', content: reply });
     return reply;
   }, [setStatus]);
