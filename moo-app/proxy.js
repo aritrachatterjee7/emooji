@@ -1,5 +1,4 @@
 'use strict';
-// proxy.js — serves React Native web build + proxies JackDaw API calls
 const express = require('express');
 const path    = require('path');
 const https   = require('https');
@@ -17,7 +16,6 @@ const JACKDAW_BASE  = (process.env.JACKDAW_BASE_URL || 'https://api.jackdaw.onli
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// ── CORS headers ───────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -27,12 +25,27 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Health check ───────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => res.json({
-  status: 'ok',
-  credsSet: !!(CLIENT_ID && CLIENT_SECRET),
-  timestamp: new Date().toISOString(),
-}));
+// ── HTTPS helper ───────────────────────────────────────────────────────────
+function httpsPost(urlStr, body, headers) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(urlStr);
+    const lib = parsed.protocol === 'https:' ? https : http;
+    const req = lib.request({
+      hostname: parsed.hostname,
+      port:     parsed.port || 443,
+      path:     parsed.pathname + (parsed.search || ''),
+      method:   'POST',
+      headers,
+    }, incoming => {
+      let data = '';
+      incoming.on('data', c => { data += c; });
+      incoming.on('end', () => resolve({ status: incoming.statusCode, headers: incoming.headers, body: data }));
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
 
 // ── Shared: fetch JackDaw access token ────────────────────────────────────
 async function fetchAccessToken() {
@@ -55,6 +68,13 @@ async function fetchAccessToken() {
   return JSON.parse(result.body).access_token;
 }
 
+// ── GET /api/health ────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({
+  status:    'ok',
+  credsSet:  !!(CLIENT_ID && CLIENT_SECRET),
+  timestamp: new Date().toISOString(),
+}));
+
 // ── POST /api/token ────────────────────────────────────────────────────────
 app.post('/api/token', async (req, res) => {
   try {
@@ -65,9 +85,9 @@ app.post('/api/token', async (req, res) => {
 });
 
 // ── POST /api/mcp/connect ──────────────────────────────────────────────────
-// Routes MCP connect through the proxy to avoid CORS errors from the browser.
-// JackDaw's /mcp/connect endpoint doesn't allow direct browser requests.
+// Proxies MCP connect to avoid CORS — browser cannot call JackDaw directly
 app.post('/api/mcp/connect', async (req, res) => {
+  console.log('MCP connect request received:', req.body);
   try {
     const token = await fetchAccessToken();
     const body  = JSON.stringify(req.body);
@@ -77,11 +97,14 @@ app.post('/api/mcp/connect', async (req, res) => {
       'Content-Length': Buffer.byteLength(body),
       'Accept':         'application/json',
     };
+    console.log('Forwarding MCP connect to JackDaw:', `${JACKDAW_BASE}/mcp/connect`);
     const result = await httpsPost(`${JACKDAW_BASE}/mcp/connect`, body, hdrs);
+    console.log('MCP connect response status:', result.status);
     res.status(result.status);
     if (result.headers['content-type']) res.set('Content-Type', result.headers['content-type']);
     res.send(result.body);
   } catch (err) {
+    console.error('MCP connect error:', err.message);
     res.status(503).json({ error: 'mcp_connect_failed', details: err.message });
   }
 });
@@ -116,7 +139,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// ── Static files (Expo web build) ─────────────────────────────────────────
+// ── Static files — MUST come after all API routes ─────────────────────────
 const PUBLIC_DIR = path.join(__dirname, 'dist');
 app.use(express.static(PUBLIC_DIR, {
   maxAge: '1h',
@@ -124,28 +147,13 @@ app.use(express.static(PUBLIC_DIR, {
     if (fp.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
   },
 }));
-app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
-// ── HTTPS helper ───────────────────────────────────────────────────────────
-function httpsPost(urlStr, body, headers) {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(urlStr);
-    const lib = parsed.protocol === 'https:' ? https : http;
-    const req = lib.request({
-      hostname: parsed.hostname,
-      port:     parsed.port || 443,
-      path:     parsed.pathname + (parsed.search || ''),
-      method:   'POST',
-      headers,
-    }, incoming => {
-      let data = '';
-      incoming.on('data', c => { data += c; });
-      incoming.on('end', () => resolve({ status: incoming.statusCode, headers: incoming.headers, body: data }));
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
+// Catch-all for SPA — excludes /api/ paths
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'api_route_not_found', path: req.path });
+  }
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
 
 app.listen(PORT, '0.0.0.0', () => console.log(`✅ Proxy on port ${PORT}`));
