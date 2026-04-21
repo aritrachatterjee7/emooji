@@ -10,6 +10,7 @@ import { ChatPanel }        from '../src/components/ChatPanel';
 import { MapToolbar }       from '../src/components/MapToolbar';
 import { FieldStatsBar }    from '../src/components/FieldStatsBar';
 import FieldMap             from '../src/components/FieldMap';
+import { SignInModal }      from '../src/components/SignInModal';
 import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
 import { useAuth }          from '../src/context/AuthContext';
 import { useTheme }         from '../src/context/ThemeContext';
@@ -79,11 +80,17 @@ export default function MainScreen() {
   const [drawMode,   setDrawMode]   = useState(null);
 
   // ── Chat state ─────────────────────────────────────────────────
-  const [messages,      setMessages]      = useState([]);
-  const [isLoading,     setIsLoading]     = useState(false);
-  const [streamStatus,  setStreamStatus]  = useState('');  // ← live JackDaw status text
-  const [unreadCount,   setUnreadCount]   = useState(0);
-  const [activePanel,   setActivePanel]   = useState('map');
+  const [messages,     setMessages]     = useState([]);
+  const [isLoading,    setIsLoading]    = useState(false);
+  const [streamStatus, setStreamStatus] = useState('');
+  const [unreadCount,  setUnreadCount]  = useState(0);
+  const [activePanel,  setActivePanel]  = useState('map');
+
+  // ── Sign-in modal ──────────────────────────────────────────────
+  // pendingMessage holds the text the user tried to send before signing in.
+  // After sign-in succeeds, we send it automatically.
+  const [showSignIn,      setShowSignIn]      = useState(false);
+  const [pendingMessage,  setPendingMessage]  = useState('');
 
   // ── PWA install ────────────────────────────────────────────────
   const [installPrompt,  setInstallPrompt]  = useState(null);
@@ -98,6 +105,17 @@ export default function MainScreen() {
       setSplashStatus(label);
     }).finally(() => setSplashVisible(false));
   }, [init]);
+
+  // ── Auto-send pending message after sign-in ────────────────────
+  useEffect(() => {
+    if (user && pendingMessage) {
+      const msg = pendingMessage;
+      setPendingMessage('');
+      setShowSignIn(false);
+      // Small delay so modal closes smoothly before sending
+      setTimeout(() => doSend(msg), 400);
+    }
+  }, [user]);
 
   // ── PWA install prompt ─────────────────────────────────────────
   useEffect(() => {
@@ -127,11 +145,11 @@ export default function MainScreen() {
     setFieldStats(null);
   }, []);
 
-  // ── Chat ───────────────────────────────────────────────────────
+  // ── Core send function ─────────────────────────────────────────
   const appendMsg = (role, content) =>
     setMessages(prev => [...prev, { role, content, time: now() }]);
 
-  const handleSend = useCallback(async (text) => {
+  const doSend = useCallback(async (text) => {
     appendMsg('user', text);
     setIsLoading(true);
     setStreamStatus('Thinking…');
@@ -140,7 +158,7 @@ export default function MainScreen() {
         text,
         polygon,
         customerId,
-        (status) => setStreamStatus(status),  // ← progress callback fed to ThinkingIndicator
+        (status) => setStreamStatus(status),
       );
       appendMsg('assistant', reply);
       if (isMobile && activePanel === 'map') setUnreadCount(c => c + 1);
@@ -151,6 +169,18 @@ export default function MainScreen() {
       setStreamStatus('');
     }
   }, [sendMessage, polygon, customerId, isMobile, activePanel]);
+
+  // ── handleSend — gate behind auth ─────────────────────────────
+  // If user is not signed in, save the message and show sign-in modal.
+  // After sign-in, the useEffect above auto-sends it.
+  const handleSend = useCallback((text) => {
+    if (!user) {
+      setPendingMessage(text);
+      setShowSignIn(true);
+      return;
+    }
+    doSend(text);
+  }, [user, doSend]);
 
   const handleClearChat = useCallback(() => {
     setMessages([]);
@@ -229,7 +259,7 @@ export default function MainScreen() {
           <ChatPanel
             messages={messages}
             isLoading={isLoading}
-            streamStatus={streamStatus}   // ← live status text from JackDaw SSE stream
+            streamStatus={streamStatus}
             onSend={handleSend}
             onClearChat={handleClearChat}
             hasField={!!polygon}
@@ -244,6 +274,13 @@ export default function MainScreen() {
           unreadCount={unreadCount}
         />
       )}
+
+      {/* Sign-in modal — shown when unauthenticated user tries to chat */}
+      <SignInModal
+        visible={showSignIn}
+        onClose={() => setShowSignIn(false)}
+        pendingMessage={pendingMessage}
+      />
 
       <AppSplash
         visible={splashVisible}
@@ -263,19 +300,13 @@ const styles = StyleSheet.create({
     flex: 1,
     ...Platform.select({ web: { minHeight: 0, overflow: 'hidden' } }),
   },
-  workspaceDesktop: { flexDirection: 'row' },
+  workspaceDesktop:   { flexDirection: 'row' },
   mapSection: {
     flex: 1,
     ...Platform.select({ web: { minHeight: 0 } }),
   },
-  chatSectionDesktop: {
-    width: CHAT_WIDTH,
-    flexShrink: 0,
-    borderLeftWidth: 1,
-  },
-  chatSection: {
-    ...Platform.select({ web: { minHeight: 0 } }),
-  },
+  chatSectionDesktop: { width: CHAT_WIDTH, flexShrink: 0, borderLeftWidth: 1 },
+  chatSection:        { ...Platform.select({ web: { minHeight: 0 } }) },
   chatSectionMobile:  { flex: 1 },
   hidden:             { display: 'none' },
   mapContainer:       { flex: 1, position: 'relative' },
