@@ -11,14 +11,12 @@ import {
 } from '@expo-google-fonts/jetbrains-mono';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { AuthProvider } from '../src/context/AuthContext';
 import { ThemeProvider, useTheme } from '../src/context/ThemeContext';
-import LoginScreen from '../src/screens/LoginScreen';
 
 SplashScreen.preventAutoHideAsync();
 
 function AppContent() {
-  const { user, loading } = useAuth();
   const { isDark } = useTheme();
 
   const [fontsLoaded] = useFonts({
@@ -27,18 +25,14 @@ function AppContent() {
   });
 
   useEffect(() => {
-    if (fontsLoaded && !loading) SplashScreen.hideAsync();
-  }, [fontsLoaded, loading]);
+    if (fontsLoaded) SplashScreen.hideAsync();
+  }, [fontsLoaded]);
 
-  if (!fontsLoaded || loading) return null;
+  if (!fontsLoaded) return null;
 
-  // Not logged in → show login screen
-  if (!user) return <LoginScreen />;
-
-  // Logged in → show the app
+  // Everyone sees the app directly — auth is handled inline when needed
   return (
     <>
-      {/* StatusBar style flips with theme */}
       <StatusBar
         style={isDark ? 'light' : 'dark'}
         backgroundColor={isDark ? '#07090e' : '#f4f6f8'}
@@ -55,9 +49,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        {/* ThemeProvider wraps everything so any component can call useTheme() */}
         <ThemeProvider>
-          {/* AuthProvider inside Theme so LoginScreen can also use theme colors */}
           <AuthProvider>
             <AppContent />
           </AuthProvider>
