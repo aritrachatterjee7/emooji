@@ -58,18 +58,20 @@ export function useJackDaw() {
   }, []);
 
   // ── Register MCP tools with JackDaw via proxy ─────────────────────────
-  // Goes through /api/mcp/connect on our proxy to avoid browser CORS errors.
-  // JackDaw expects { url, name } — not server_url.
+  // JackDaw /mcp/connect expects an ARRAY of server configs:
+  // [{ name, transport, url }]
+  // transport must be 'sse' for SSE servers.
   const connectMCP = useCallback(async () => {
     if (!tokenRef.current) return false;
     try {
       const res = await fetch(CFG.proxy.mcpUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url:  CFG.mcp.serverUrl,  // JackDaw expects "url" not "server_url"
-          name: CFG.mcp.name,
-        }),
+        body: JSON.stringify([{
+          name:      CFG.mcp.name,
+          transport: 'sse',
+          url:       CFG.mcp.serverUrl,
+        }]),
       });
       if (!res.ok) return false;
       const data = await res.json();
