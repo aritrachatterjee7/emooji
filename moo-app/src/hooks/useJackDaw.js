@@ -2,8 +2,6 @@
 import { useState, useRef, useCallback } from 'react';
 import Constants from 'expo-constants';
 
-// On native dev: use the machine IP (set EXPO_PUBLIC_PROXY_URL in .env)
-// On web dev: use relative /api path — Expo web serves from the same origin
 const PROXY_BASE =
   Constants.expoConfig?.extra?.proxyUrl ||
   process.env.EXPO_PUBLIC_PROXY_URL ||
@@ -12,9 +10,9 @@ const PROXY_BASE =
 const CFG = {
   jackdaw: { baseUrl: 'https://api.jackdaw.online' },
   proxy: {
-    tokenUrl:  `${PROXY_BASE}/api/token`,
-    chatUrl:   `${PROXY_BASE}/api/chat`,
-    mcpUrl:    `${PROXY_BASE}/api/mcp/connect`, // ← routed through proxy to avoid CORS
+    tokenUrl: `${PROXY_BASE}/api/token`,
+    chatUrl:  `${PROXY_BASE}/api/chat`,
+    mcpUrl:   `${PROXY_BASE}/api/mcp/connect`,
   },
   mcp: {
     serverUrl: 'https://emooji.onrender.com/sse',
@@ -59,21 +57,18 @@ export function useJackDaw() {
     }
   }, []);
 
-  // ── Register MCP tools with JackDaw ───────────────────────────────────
-  // Goes through proxy (/api/mcp/connect) instead of directly to JackDaw
-  // to avoid CORS errors. The proxy forwards the request with the correct
-  // Authorization header to api.jackdaw.online/mcp/connect.
+  // ── Register MCP tools with JackDaw via proxy ─────────────────────────
+  // Goes through /api/mcp/connect on our proxy to avoid browser CORS errors.
+  // JackDaw expects { url, name } — not server_url.
   const connectMCP = useCallback(async () => {
     if (!tokenRef.current) return false;
     try {
       const res = await fetch(CFG.proxy.mcpUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          server_url: CFG.mcp.serverUrl,
-          name:       CFG.mcp.name,
+          url:  CFG.mcp.serverUrl,  // JackDaw expects "url" not "server_url"
+          name: CFG.mcp.name,
         }),
       });
       if (!res.ok) return false;
@@ -86,8 +81,6 @@ export function useJackDaw() {
   }, []);
 
   // ── Init — runs on app load ────────────────────────────────────────────
-  // Sequence: fetchToken → connectMCP → ready
-  // Has an 8s timeout so the map always loads even if auth fails.
   const init = useCallback(async (onProgress) => {
     const timeout = setTimeout(() => {
       setStatus('error', 'Timeout');
@@ -124,8 +117,6 @@ export function useJackDaw() {
   }, [fetchToken, connectMCP, setStatus]);
 
   // ── Send a chat message ────────────────────────────────────────────────
-  // customerId = Firebase user.uid — scopes all private MCP tool calls
-  // to the correct farm/user so data is never mixed between customers.
   const sendMessage = useCallback(async (userText, polygon, customerId = null) => {
 
     const systemCtx = polygon
