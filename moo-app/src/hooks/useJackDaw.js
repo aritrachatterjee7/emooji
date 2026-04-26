@@ -10,10 +10,10 @@ const PROXY_BASE =
 const CFG = {
   jackdaw: { baseUrl: 'https://api.jackdaw.online' },
   proxy: {
-    tokenUrl:   `${PROXY_BASE}/api/token`,
-    chatUrl:    `${PROXY_BASE}/api/chat`,
-    streamUrl:  `${PROXY_BASE}/api/chat/stream`,
-    mcpUrl:     `${PROXY_BASE}/api/mcp/connect`,
+    tokenUrl:  `${PROXY_BASE}/api/token`,
+    chatUrl:   `${PROXY_BASE}/api/chat`,
+    streamUrl: `${PROXY_BASE}/api/chat/stream`,
+    mcpUrl:    `${PROXY_BASE}/api/mcp/connect`,
   },
   mcp: {
     serverUrl: 'https://emooji.onrender.com/sse',
@@ -35,9 +35,10 @@ export function geojsonToWKT(geometry) {
 
 export function useJackDaw() {
   const [connStatus, setConnStatus] = useState({ state: 'connecting', label: 'Connecting' });
-  const tokenRef   = useRef(null);
-  const sessionRef = useRef(null);
-  const historyRef = useRef([]);
+  const tokenRef      = useRef(null);
+  const sessionRef    = useRef(null);
+  const historyRef    = useRef([]);
+  const mcpConnected  = useRef(false); // tracks if MCP tools are registered
 
   const setStatus = useCallback((state, label) => setConnStatus({ state, label }), []);
 
@@ -59,8 +60,10 @@ export function useJackDaw() {
   }, []);
 
   // ── Register MCP tools with JackDaw via proxy ─────────────────────────
+  // Only called after user signs in. Without MCP, JackDaw still works
+  // using its own built-in agricultural knowledge.
   const connectMCP = useCallback(async () => {
-    if (!tokenRef.current) return false;
+    if (mcpConnected.current) return true; // already connected
     try {
       const res = await fetch(CFG.proxy.mcpUrl, {
         method: 'POST',
@@ -74,6 +77,7 @@ export function useJackDaw() {
       if (!res.ok) return false;
       const data = await res.json();
       sessionRef.current = data.session_id || data.id || null;
+      mcpConnected.current = true;
       return true;
     } catch {
       return false;
@@ -81,6 +85,8 @@ export function useJackDaw() {
   }, []);
 
   // ── Init — runs on app load ────────────────────────────────────────────
+  // Fetches token so chat works immediately for everyone.
+  // MCP tools are NOT connected here — only after sign-in.
   const init = useCallback(async (onProgress) => {
     const timeout = setTimeout(() => {
       setStatus('error', 'Timeout');
@@ -96,9 +102,6 @@ export function useJackDaw() {
       const tokenOk = await Promise.race([fetchToken(), sleep(6000).then(() => false)]);
 
       if (tokenOk) {
-        onProgress(65, 'Registering tools…');
-        setStatus('connecting', 'Registering');
-        await Promise.race([connectMCP(), sleep(4000).then(() => false)]).catch(() => {});
         onProgress(90, 'Ready.');
         setStatus('online', 'Connected');
       } else {
@@ -114,12 +117,21 @@ export function useJackDaw() {
     } finally {
       clearTimeout(timeout);
     }
-  }, [fetchToken, connectMCP, setStatus]);
+  }, [fetchToken, setStatus]);
+
+  // ── Connect MCP after sign-in ──────────────────────────────────────────
+  // Call this from index.jsx when user signs in.
+  // Silently connects MCP tools and updates status badge.
+  const initMCP = useCallback(async () => {
+    if (mcpConnected.current) return;
+    setStatus('connecting', 'Upgrading…');
+    const ok = await connectMCP();
+    if (ok) {
+      setStatus('online', 'Connected');
+    }
+  }, [connectMCP, setStatus]);
 
   // ── Send a chat message with SSE streaming ────────────────────────────
-  // onProgress(statusText) is called for each progress event from JackDaw
-  // so the UI can show "Analyzing...", "Starting tool call: get_ndvi..." etc.
-  // Returns the final assistant reply string.
   const sendMessage = useCallback(async (userText, polygon, customerId = null, onProgress = null) => {
 
     const systemCtx = polygon
@@ -156,7 +168,7 @@ export function useJackDaw() {
           return reply;
         }
       }
-    } catch (streamErr) {
+    } catch {
       // Fall through to buffered endpoint
     }
 
@@ -194,14 +206,15 @@ export function useJackDaw() {
   }, [setStatus]);
 
   // ── Clear chat history ─────────────────────────────────────────────────
-  const clearHistory = useCallback(() => { historyRef.current = []; }, []);
+  const clearHistory = useCallback(() => {
+    historyRef.current = [];
+    mcpConnected.current = false; // reset so MCP reconnects on next session
+  }, []);
 
-  return { connStatus, init, sendMessage, clearHistory };
+  return { connStatus, init, initMCP, sendMessage, clearHistory };
 }
 
 // ── SSE stream reader ──────────────────────────────────────────────────────
-// Reads the JackDaw SSE stream and calls onProgress for each progress event.
-// Returns the final assistant reply from the 'final' event.
 async function readSSEStream(body, onProgress, sessionRef) {
   const reader  = body.getReader();
   const decoder = new TextDecoder();
@@ -214,7 +227,7 @@ async function readSSEStream(body, onProgress, sessionRef) {
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
-    buffer = lines.pop(); // keep incomplete line in buffer
+    buffer = lines.pop();
 
     let eventType = null;
     let dataLine  = null;
@@ -225,18 +238,15 @@ async function readSSEStream(body, onProgress, sessionRef) {
       } else if (line.startsWith('data:')) {
         dataLine = line.slice(5).trim();
       } else if (line === '' && eventType && dataLine) {
-        // Process complete event
         try {
           const parsed = JSON.parse(dataLine);
 
           if (eventType === 'progress' && onProgress) {
-            // Extract human-readable status text
             const text = extractProgressText(parsed);
             if (text) onProgress(text);
           }
 
           if (eventType === 'final') {
-            // Extract final reply
             finalReply = extractFinalReply(parsed);
             if (parsed.thread_id && sessionRef) {
               sessionRef.current = parsed.thread_id;
@@ -246,9 +256,8 @@ async function readSSEStream(body, onProgress, sessionRef) {
           if (eventType === 'error') {
             throw new Error(parsed.message || 'Stream error');
           }
-
         } catch (e) {
-          // ignore parse errors for individual events
+          // ignore parse errors
         }
 
         eventType = null;
@@ -260,15 +269,13 @@ async function readSSEStream(body, onProgress, sessionRef) {
   return finalReply;
 }
 
-// Extract human-readable text from a JackDaw progress event
 function extractProgressText(data) {
   if (typeof data === 'string') return data;
-  if (data.message)  return data.message;
-  if (data.text)     return data.text;
-  if (data.content)  return typeof data.content === 'string' ? data.content : null;
-  if (data.status)   return data.status;
-  // Tool call events
-  if (data.tool)     return `Calling tool: ${data.tool}`;
+  if (data.message)   return data.message;
+  if (data.text)      return data.text;
+  if (data.content)   return typeof data.content === 'string' ? data.content : null;
+  if (data.status)    return data.status;
+  if (data.tool)      return `Calling tool: ${data.tool}`;
   if (data.tool_name) {
     if (data.phase === 'start' || data.type === 'tool_start') return `Starting tool call: ${data.tool_name}`;
     if (data.phase === 'end'   || data.type === 'tool_end')   return `Finished tool call: ${data.tool_name}`;
@@ -277,7 +284,6 @@ function extractProgressText(data) {
   return null;
 }
 
-// Extract final reply string from a JackDaw final event
 function extractFinalReply(data) {
   if (typeof data === 'string') return data;
   if (data.message)  return data.message;

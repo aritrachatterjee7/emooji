@@ -18,7 +18,6 @@ SplashScreen.preventAutoHideAsync();
 
 function AppContent() {
   const { isDark } = useTheme();
-
   const [fontsLoaded] = useFonts({
     Outfit_400Regular, Outfit_500Medium, Outfit_700Bold,
     JetBrainsMono_400Regular, JetBrainsMono_500Medium,
@@ -30,7 +29,6 @@ function AppContent() {
 
   if (!fontsLoaded) return null;
 
-  // Everyone sees the app directly — auth is handled inline when needed
   return (
     <>
       <StatusBar
