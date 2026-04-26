@@ -11,7 +11,7 @@ function StatusDot({ state, colors }) {
   return <View style={[styles.dot, { backgroundColor: color }]} />;
 }
 
-export function TopNav({ connStatus, fieldStats, showInstall, onInstall }) {
+export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignIn }) {
   const insets = useSafeAreaInsets();
   const { state, label } = connStatus;
 
@@ -20,7 +20,6 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall }) {
 
   const handleLogout = () => {
     if (Platform.OS === 'web') {
-      // Alert doesn't work on web — use native browser confirm
       if (window.confirm('Are you sure you want to sign out?')) {
         logout();
       }
@@ -95,7 +94,18 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall }) {
           </TouchableOpacity>
         )}
 
-        {/* User avatar + logout */}
+        {/* Sign In button — shown when not logged in */}
+        {!user && (
+          <TouchableOpacity
+            style={[styles.signInBtn, { backgroundColor: colors.green }]}
+            onPress={onSignIn}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.signInText}>Sign In</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* User avatar + logout — shown when logged in */}
         {user && (
           <TouchableOpacity
             style={styles.avatarBtn}
@@ -150,15 +160,18 @@ const styles = StyleSheet.create({
 
   right: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
 
-  badge:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
-  dot:         { width: 6, height: 6, borderRadius: 3 },
-  badgeLabel:  { fontFamily: Fonts.mono, fontSize: 10 },
+  badge:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
+  dot:        { width: 6, height: 6, borderRadius: 3 },
+  badgeLabel: { fontFamily: Fonts.mono, fontSize: 10 },
 
-  themeBtn:    { width: 30, height: 30, borderRadius: Radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  themeIcon:   { fontSize: 14 },
+  themeBtn:  { width: 30, height: 30, borderRadius: Radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  themeIcon: { fontSize: 14 },
 
   installBtn:  { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.md },
   installText: { fontFamily: Fonts.body, fontSize: 12, fontWeight: '700', color: '#000' },
+
+  signInBtn:  { paddingHorizontal: 14, paddingVertical: 6, borderRadius: Radius.md },
+  signInText: { fontFamily: Fonts.displayBold, fontSize: 12, color: '#07090e' },
 
   avatarBtn:      { marginLeft: 4 },
   avatarFallback: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
