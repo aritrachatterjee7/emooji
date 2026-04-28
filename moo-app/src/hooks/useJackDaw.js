@@ -124,9 +124,6 @@ export function useJackDaw() {
   }, [connectMCP, setStatus]);
 
   // ── Send a chat message ────────────────────────────────────────────────
-  // isSignedIn controls the system prompt:
-  // - Without sign-in: JackDaw uses only its own knowledge, NO tool calls
-  // - With sign-in: JackDaw can call all 16 MCP satellite tools
   const sendMessage = useCallback(async (
     userText,
     polygon,
@@ -135,18 +132,21 @@ export function useJackDaw() {
     isSignedIn = false,
   ) => {
 
+    // ── CRITICAL: clear session when not signed in ─────────────────────
+    // Prevents old signed-in session_id from being reused, which causes
+    // JackDaw to expect WKT geometry and return 400 errors.
+    if (!isSignedIn) {
+      sessionRef.current = null;
+    }
+
     // ── System prompt — gates tool usage based on auth ─────────────────
     let systemCtx;
 
     if (!isSignedIn) {
-      // Unauthenticated — pure JackDaw knowledge, no tools
-      // Deliberately does NOT mention GeoJSON or MCP tools so JackDaw
-      // doesn't attempt to call satellite APIs
       systemCtx = polygon
-        ? `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management. The farmer has drawn a field in Europe. Use your training knowledge to answer their question. Do NOT attempt to call any external tools or APIs — provide answers from your agricultural expertise only. The approximate field location is embedded in the conversation context.`
+        ? `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management. The farmer has drawn a field in Europe. Use your training knowledge to answer their question. Do NOT attempt to call any external tools or APIs — provide answers from your agricultural expertise only.`
         : `You are an expert agricultural analyst. No field drawn yet — ask the farmer to draw a field on the map first.`;
     } else {
-      // Authenticated — full MCP tool access
       systemCtx = polygon
         ? `You are an expert agricultural and environmental analyst. The farmer has drawn a polygon on the map. Use this GeoJSON geometry in ALL relevant MCP tool calls: ${polygon}\n\nAlways fetch real data using the available MCP tools. Never fabricate NDVI, weather, or terrain values.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}. Pass this to all private MCP tool calls (get_my_paddocks, get_paddock_rating, get_animals_in_paddock, get_animal_track, get_ungrazed_paddocks, get_low_ndvi_paddocks, recommend_paddock_for_herd_move).` : ''}`
         : `You are an expert agricultural analyst with access to real satellite tools. No polygon drawn yet — ask the farmer to draw a field first.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}.` : ''}`;
@@ -159,16 +159,15 @@ export function useJackDaw() {
       system:   systemCtx,
     };
 
-    // Only send customer_id and WKT when signed in
+    // Only send session_id, customer_id and WKT when signed in
     if (isSignedIn) {
+      if (sessionRef.current) payload.session_id = sessionRef.current;
       if (customerId) payload.customer_id = customerId;
       if (polygon) {
         const wkt = geojsonToWKT(polygon);
         if (wkt) payload.wkt = { srid: 4326, wkt };
       }
     }
-
-    if (sessionRef.current) payload.session_id = sessionRef.current;
 
     // ── Try streaming first ────────────────────────────────────────────
     try {
@@ -179,7 +178,7 @@ export function useJackDaw() {
       });
 
       if (res.ok && res.body) {
-        const reply = await readSSEStream(res.body, onProgress, sessionRef);
+        const reply = await readSSEStream(res.body, onProgress, isSignedIn ? sessionRef : null);
         if (reply) {
           historyRef.current.push({ role: 'assistant', content: reply });
           return reply;
@@ -212,7 +211,8 @@ export function useJackDaw() {
 
     if (Array.isArray(data) && data.length > 0 && data[0].msg) {
       reply = data[0].msg.content;
-      if (data[0].thread_id) sessionRef.current = data[0].thread_id;
+      // Only save thread_id when signed in
+      if (isSignedIn && data[0].thread_id) sessionRef.current = data[0].thread_id;
     } else if (data.message)  { reply = data.message; }
     else if (data.content)    { reply = typeof data.content === 'string' ? data.content : data.content.text || JSON.stringify(data.content); }
     else if (data.response)   { reply = data.response; }
@@ -225,6 +225,7 @@ export function useJackDaw() {
   // ── Clear chat history ─────────────────────────────────────────────────
   const clearHistory = useCallback(() => {
     historyRef.current = [];
+    sessionRef.current = null;
     mcpConnected.current = false;
   }, []);
 
@@ -263,7 +264,8 @@ async function readSSEStream(body, onProgress, sessionRef) {
           }
           if (eventType === 'final') {
             finalReply = extractFinalReply(parsed);
-            if (parsed.thread_id && sessionRef) sessionRef.current = parsed.thread_id;
+            // Only save thread_id if sessionRef is provided (signed in)
+            if (sessionRef && parsed.thread_id) sessionRef.current = parsed.thread_id;
           }
           if (eventType === 'error') throw new Error(parsed.message || 'Stream error');
         } catch {}
