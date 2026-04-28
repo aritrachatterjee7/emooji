@@ -42,7 +42,7 @@ export function useJackDaw() {
 
   const setStatus = useCallback((state, label) => setConnStatus({ state, label }), []);
 
-  // ── Fetch JWT token from proxy ─────────────────────────────────────────
+  // ── Fetch JWT token ────────────────────────────────────────────────────
   const fetchToken = useCallback(async () => {
     try {
       const res = await fetch(CFG.proxy.tokenUrl, {
@@ -59,7 +59,7 @@ export function useJackDaw() {
     }
   }, []);
 
-  // ── Register MCP tools — only called after user signs in ──────────────
+  // ── Register MCP tools — only after sign-in ────────────────────────────
   const connectMCP = useCallback(async () => {
     if (mcpConnected.current) return true;
     try {
@@ -82,7 +82,7 @@ export function useJackDaw() {
     }
   }, []);
 
-  // ── Init — token only, no MCP ──────────────────────────────────────────
+  // ── Init ───────────────────────────────────────────────────────────────
   const init = useCallback(async (onProgress) => {
     const timeout = setTimeout(() => {
       setStatus('error', 'Timeout');
@@ -123,7 +123,7 @@ export function useJackDaw() {
     if (ok) setStatus('online', 'Connected');
   }, [connectMCP, setStatus]);
 
-  // ── Send a chat message ────────────────────────────────────────────────
+  // ── Send message ───────────────────────────────────────────────────────
   const sendMessage = useCallback(async (
     userText,
     polygon,
@@ -132,21 +132,10 @@ export function useJackDaw() {
     isSignedIn = false,
   ) => {
 
-    // ── ALWAYS clear session when not signed in ────────────────────────
-    // Must happen before EVERY send — not just the first one.
-    // JackDaw saves thread_id from SSE stream responses, and if that
-    // thread_id gets reused in a subsequent unauthenticated request,
-    // JackDaw expects WKT geometry from the previous session → 400 error.
-    if (!isSignedIn) {
-      sessionRef.current = null;
-    }
-
     // ── System prompt ──────────────────────────────────────────────────
     let systemCtx;
     if (!isSignedIn) {
-      systemCtx = polygon
-        ? `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management. The farmer has drawn a field in Europe. Use your training knowledge to answer their question. Do NOT attempt to call any external tools or APIs — provide answers from your agricultural expertise only.`
-        : `You are an expert agricultural analyst. Answer farming and land-related questions using your training knowledge only. Do NOT call any external tools or APIs.`;
+      systemCtx = `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management in Europe. Answer the farmer's question using your training knowledge only. Do NOT attempt to call any external tools, APIs, or MCP servers.`;
     } else {
       systemCtx = polygon
         ? `You are an expert agricultural and environmental analyst. The farmer has drawn a polygon on the map. Use this GeoJSON geometry in ALL relevant MCP tool calls: ${polygon}\n\nAlways fetch real data using the available MCP tools. Never fabricate NDVI, weather, or terrain values.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}. Pass this to all private MCP tool calls (get_my_paddocks, get_paddock_rating, get_animals_in_paddock, get_animal_track, get_ungrazed_paddocks, get_low_ndvi_paddocks, recommend_paddock_for_herd_move).` : ''}`
@@ -155,23 +144,56 @@ export function useJackDaw() {
 
     historyRef.current.push({ role: 'user', content: userText });
 
-    // ── Build payload — never include session_id or WKT when not signed in
+    // ── NOT signed in: use simple buffered endpoint, no session, no WKT ─
+    if (!isSignedIn) {
+      const payload = {
+        messages: historyRef.current,
+        system:   systemCtx,
+        // NO session_id — never
+        // NO wkt — never
+        // NO customer_id — never
+      };
+
+      const res = await fetch(CFG.proxy.chatUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => res.statusText);
+        throw new Error(`${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      const data = await res.json();
+      let reply;
+
+      if (Array.isArray(data) && data.length > 0 && data[0].msg) {
+        reply = data[0].msg.content;
+        // NEVER save thread_id when not signed in
+      } else if (data.message)  { reply = data.message; }
+      else if (data.content)    { reply = typeof data.content === 'string' ? data.content : data.content.text || JSON.stringify(data.content); }
+      else if (data.response)   { reply = data.response; }
+      else                      { reply = JSON.stringify(data); }
+
+      historyRef.current.push({ role: 'assistant', content: reply });
+      return reply;
+    }
+
+    // ── Signed in: use streaming endpoint with full context ────────────
     const payload = {
-      messages: historyRef.current,
-      system:   systemCtx,
+      messages:   historyRef.current,
+      system:     systemCtx,
+      session_id: sessionRef.current || undefined,
+      customer_id: customerId || undefined,
     };
 
-    if (isSignedIn) {
-      if (sessionRef.current) payload.session_id = sessionRef.current;
-      if (customerId) payload.customer_id = customerId;
-      if (polygon) {
-        const wkt = geojsonToWKT(polygon);
-        if (wkt) payload.wkt = { srid: 4326, wkt };
-      }
+    if (polygon) {
+      const wkt = geojsonToWKT(polygon);
+      if (wkt) payload.wkt = { srid: 4326, wkt };
     }
-    // When NOT signed in: no session_id, no customer_id, no wkt — ever.
 
-    // ── Try streaming first ────────────────────────────────────────────
+    // Try streaming
     try {
       const res = await fetch(CFG.proxy.streamUrl, {
         method: 'POST',
@@ -180,8 +202,7 @@ export function useJackDaw() {
       });
 
       if (res.ok && res.body) {
-        // Pass null as sessionRef when not signed in so thread_id is NEVER saved
-        const reply = await readSSEStream(res.body, onProgress, isSignedIn ? sessionRef : null);
+        const reply = await readSSEStream(res.body, onProgress, sessionRef);
         if (reply) {
           historyRef.current.push({ role: 'assistant', content: reply });
           return reply;
@@ -191,7 +212,7 @@ export function useJackDaw() {
       // Fall through to buffered
     }
 
-    // ── Fallback to buffered endpoint ──────────────────────────────────
+    // Fallback buffered
     const res = await fetch(CFG.proxy.chatUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -214,8 +235,7 @@ export function useJackDaw() {
 
     if (Array.isArray(data) && data.length > 0 && data[0].msg) {
       reply = data[0].msg.content;
-      // Only save thread_id when signed in
-      if (isSignedIn && data[0].thread_id) sessionRef.current = data[0].thread_id;
+      if (data[0].thread_id) sessionRef.current = data[0].thread_id;
     } else if (data.message)  { reply = data.message; }
     else if (data.content)    { reply = typeof data.content === 'string' ? data.content : data.content.text || JSON.stringify(data.content); }
     else if (data.response)   { reply = data.response; }
@@ -225,7 +245,7 @@ export function useJackDaw() {
     return reply;
   }, [setStatus]);
 
-  // ── Clear chat history ─────────────────────────────────────────────────
+  // ── Clear history ──────────────────────────────────────────────────────
   const clearHistory = useCallback(() => {
     historyRef.current = [];
     sessionRef.current = null;
@@ -235,8 +255,7 @@ export function useJackDaw() {
   return { connStatus, init, initMCP, sendMessage, clearHistory };
 }
 
-// ── SSE stream reader ──────────────────────────────────────────────────────
-// sessionRef is null when not signed in — thread_id is never saved in that case.
+// ── SSE stream reader (signed-in only) ────────────────────────────────────
 async function readSSEStream(body, onProgress, sessionRef) {
   const reader   = body.getReader();
   const decoder  = new TextDecoder();
@@ -270,8 +289,7 @@ async function readSSEStream(body, onProgress, sessionRef) {
 
           if (eventType === 'final') {
             finalReply = extractFinalReply(parsed);
-            // Only save thread_id if sessionRef provided (i.e. signed in)
-            if (sessionRef !== null && parsed.thread_id) {
+            if (parsed.thread_id && sessionRef) {
               sessionRef.current = parsed.thread_id;
             }
           }
@@ -280,9 +298,8 @@ async function readSSEStream(body, onProgress, sessionRef) {
             throw new Error(parsed.message || 'Stream error');
           }
         } catch (e) {
-          // ignore individual parse errors
+          // ignore parse errors
         }
-
         eventType = null;
         dataLine  = null;
       }
