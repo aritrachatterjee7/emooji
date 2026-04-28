@@ -4,14 +4,14 @@ import { View, TouchableOpacity, Text, StyleSheet, ScrollView } from 'react-nati
 import { Fonts, Radius, Spacing } from '../constants/tokens';
 import { useTheme } from '../context/ThemeContext';
 
-function ToolBtn({ label, icon, onPress, variant = 'default', active = false, colors }) {
+function ToolBtn({ label, icon, onPress, active = false, danger = false, colors }) {
   return (
     <TouchableOpacity
       style={[
         styles.btn,
         { backgroundColor: colors.bgElevated, borderColor: colors.border },
-        variant === 'primary' && { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder },
         active && { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder },
+        danger && { borderColor: colors.border },
       ]}
       onPress={onPress}
       activeOpacity={0.7}
@@ -19,14 +19,16 @@ function ToolBtn({ label, icon, onPress, variant = 'default', active = false, co
       <Text style={[
         styles.btnIcon,
         { color: colors.textSecondary },
-        (variant === 'primary' || active) && { color: colors.green },
+        active && { color: colors.green },
+        danger && { color: colors.danger },
       ]}>
         {icon}
       </Text>
       <Text style={[
         styles.btnLabel,
         { color: colors.textSecondary },
-        (variant === 'primary' || active) && { color: colors.green },
+        active && { color: colors.green },
+        danger && { color: colors.danger },
       ]}>
         {label}
       </Text>
@@ -44,10 +46,14 @@ export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLaye
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
       >
-        <ToolBtn label="Polygon"   icon="△" variant="primary" active={drawMode === 'polygon'}   onPress={onPolygon}    colors={colors} />
-        <ToolBtn label="Rectangle" icon="▭"                   active={drawMode === 'rectangle'} onPress={onRectangle}  colors={colors} />
-        <ToolBtn label="Clear"     icon="✕" variant="danger"                                    onPress={onClear}      colors={colors} />
+        {/* Draw tools — active only when drawMode matches */}
+        <ToolBtn label="Polygon"   icon="△" active={drawMode === 'polygon'}   onPress={onPolygon}    colors={colors} />
+        <ToolBtn label="Rectangle" icon="▭" active={drawMode === 'rectangle'} onPress={onRectangle}  colors={colors} />
+        <ToolBtn label="Clear"     icon="✕" danger                             onPress={onClear}      colors={colors} />
+
         <View style={[styles.sep, { backgroundColor: colors.borderMid }]} />
+
+        {/* Layer toggle */}
         <ToolBtn label="Sat"    icon="◉" active={mapLayer === 'satellite'} onPress={onLayerSat}    colors={colors} />
         <ToolBtn label="Street" icon="⌂" active={mapLayer === 'street'}   onPress={onLayerStreet} colors={colors} />
       </ScrollView>
@@ -62,9 +68,7 @@ export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLaye
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    borderBottomWidth: 1,
-  },
+  wrapper:  { borderBottomWidth: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -72,11 +76,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     gap: 3,
   },
-  sep: {
-    width: 1,
-    height: 18,
-    marginHorizontal: 5,
-  },
+  sep:      { width: 1, height: 18, marginHorizontal: 5 },
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -88,12 +88,6 @@ const styles = StyleSheet.create({
   },
   btnIcon:  { fontSize: 12 },
   btnLabel: { fontFamily: Fonts.body, fontSize: 12 },
-  hint: {
-    paddingHorizontal: Spacing.md,
-    paddingBottom: 6,
-  },
-  hintText: {
-    fontFamily: Fonts.mono,
-    fontSize: 11,
-  },
+  hint:     { paddingHorizontal: Spacing.md, paddingBottom: 6 },
+  hintText: { fontFamily: Fonts.mono, fontSize: 11 },
 });

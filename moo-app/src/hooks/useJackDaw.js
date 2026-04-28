@@ -35,10 +35,10 @@ export function geojsonToWKT(geometry) {
 
 export function useJackDaw() {
   const [connStatus, setConnStatus] = useState({ state: 'connecting', label: 'Connecting' });
-  const tokenRef      = useRef(null);
-  const sessionRef    = useRef(null);
-  const historyRef    = useRef([]);
-  const mcpConnected  = useRef(false); // tracks if MCP tools are registered
+  const tokenRef     = useRef(null);
+  const sessionRef   = useRef(null);
+  const historyRef   = useRef([]);
+  const mcpConnected = useRef(false);
 
   const setStatus = useCallback((state, label) => setConnStatus({ state, label }), []);
 
@@ -59,11 +59,9 @@ export function useJackDaw() {
     }
   }, []);
 
-  // ── Register MCP tools with JackDaw via proxy ─────────────────────────
-  // Only called after user signs in. Without MCP, JackDaw still works
-  // using its own built-in agricultural knowledge.
+  // ── Register MCP tools — only called after user signs in ──────────────
   const connectMCP = useCallback(async () => {
-    if (mcpConnected.current) return true; // already connected
+    if (mcpConnected.current) return true;
     try {
       const res = await fetch(CFG.proxy.mcpUrl, {
         method: 'POST',
@@ -84,9 +82,7 @@ export function useJackDaw() {
     }
   }, []);
 
-  // ── Init — runs on app load ────────────────────────────────────────────
-  // Fetches token so chat works immediately for everyone.
-  // MCP tools are NOT connected here — only after sign-in.
+  // ── Init — token only, no MCP ──────────────────────────────────────────
   const init = useCallback(async (onProgress) => {
     const timeout = setTimeout(() => {
       setStatus('error', 'Timeout');
@@ -120,40 +116,61 @@ export function useJackDaw() {
   }, [fetchToken, setStatus]);
 
   // ── Connect MCP after sign-in ──────────────────────────────────────────
-  // Call this from index.jsx when user signs in.
-  // Silently connects MCP tools and updates status badge.
   const initMCP = useCallback(async () => {
     if (mcpConnected.current) return;
     setStatus('connecting', 'Upgrading…');
     const ok = await connectMCP();
-    if (ok) {
-      setStatus('online', 'Connected');
-    }
+    if (ok) setStatus('online', 'Connected');
   }, [connectMCP, setStatus]);
 
-  // ── Send a chat message with SSE streaming ────────────────────────────
-  const sendMessage = useCallback(async (userText, polygon, customerId = null, onProgress = null) => {
+  // ── Send a chat message ────────────────────────────────────────────────
+  // isSignedIn controls the system prompt:
+  // - Without sign-in: JackDaw uses only its own knowledge, NO tool calls
+  // - With sign-in: JackDaw can call all 16 MCP satellite tools
+  const sendMessage = useCallback(async (
+    userText,
+    polygon,
+    customerId = null,
+    onProgress = null,
+    isSignedIn = false,
+  ) => {
 
-    const systemCtx = polygon
-      ? `You are an expert agricultural and environmental analyst. The farmer has drawn a polygon on the map. Use this GeoJSON geometry in ALL relevant MCP tool calls: ${polygon}\n\nAlways fetch real data. Never fabricate NDVI, weather, or terrain values.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}. Pass this to all private MCP tool calls (get_my_paddocks, get_paddock_rating, get_animals_in_paddock, get_animal_track, get_ungrazed_paddocks, get_low_ndvi_paddocks, recommend_paddock_for_herd_move).` : ''}`
-      : `You are an expert agricultural analyst. No polygon drawn yet — ask the farmer to draw a field first.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}.` : ''}`;
+    // ── System prompt — gates tool usage based on auth ─────────────────
+    let systemCtx;
+
+    if (!isSignedIn) {
+      // Unauthenticated — pure JackDaw knowledge, no tools
+      // Deliberately does NOT mention GeoJSON or MCP tools so JackDaw
+      // doesn't attempt to call satellite APIs
+      systemCtx = polygon
+        ? `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management. The farmer has drawn a field in Europe. Use your training knowledge to answer their question. Do NOT attempt to call any external tools or APIs — provide answers from your agricultural expertise only. The approximate field location is embedded in the conversation context.`
+        : `You are an expert agricultural analyst. No field drawn yet — ask the farmer to draw a field on the map first.`;
+    } else {
+      // Authenticated — full MCP tool access
+      systemCtx = polygon
+        ? `You are an expert agricultural and environmental analyst. The farmer has drawn a polygon on the map. Use this GeoJSON geometry in ALL relevant MCP tool calls: ${polygon}\n\nAlways fetch real data using the available MCP tools. Never fabricate NDVI, weather, or terrain values.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}. Pass this to all private MCP tool calls (get_my_paddocks, get_paddock_rating, get_animals_in_paddock, get_animal_track, get_ungrazed_paddocks, get_low_ndvi_paddocks, recommend_paddock_for_herd_move).` : ''}`
+        : `You are an expert agricultural analyst with access to real satellite tools. No polygon drawn yet — ask the farmer to draw a field first.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}.` : ''}`;
+    }
 
     historyRef.current.push({ role: 'user', content: userText });
 
     const payload = {
-      messages:    historyRef.current,
-      system:      systemCtx,
-      customer_id: customerId,
+      messages: historyRef.current,
+      system:   systemCtx,
     };
+
+    // Only send customer_id and WKT when signed in
+    if (isSignedIn) {
+      if (customerId) payload.customer_id = customerId;
+      if (polygon) {
+        const wkt = geojsonToWKT(polygon);
+        if (wkt) payload.wkt = { srid: 4326, wkt };
+      }
+    }
 
     if (sessionRef.current) payload.session_id = sessionRef.current;
 
-    if (polygon) {
-      const wkt = geojsonToWKT(polygon);
-      if (wkt) payload.wkt = { srid: 4326, wkt };
-    }
-
-    // ── Try streaming first ───────────────────────────────────────────
+    // ── Try streaming first ────────────────────────────────────────────
     try {
       const res = await fetch(CFG.proxy.streamUrl, {
         method: 'POST',
@@ -169,10 +186,10 @@ export function useJackDaw() {
         }
       }
     } catch {
-      // Fall through to buffered endpoint
+      // Fall through to buffered
     }
 
-    // ── Fallback to buffered endpoint ─────────────────────────────────
+    // ── Fallback to buffered endpoint ──────────────────────────────────
     const res = await fetch(CFG.proxy.chatUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -208,7 +225,7 @@ export function useJackDaw() {
   // ── Clear chat history ─────────────────────────────────────────────────
   const clearHistory = useCallback(() => {
     historyRef.current = [];
-    mcpConnected.current = false; // reset so MCP reconnects on next session
+    mcpConnected.current = false;
   }, []);
 
   return { connStatus, init, initMCP, sendMessage, clearHistory };
@@ -216,9 +233,9 @@ export function useJackDaw() {
 
 // ── SSE stream reader ──────────────────────────────────────────────────────
 async function readSSEStream(body, onProgress, sessionRef) {
-  const reader  = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer    = '';
+  const reader   = body.getReader();
+  const decoder  = new TextDecoder();
+  let buffer     = '';
   let finalReply = null;
 
   while (true) {
@@ -240,26 +257,16 @@ async function readSSEStream(body, onProgress, sessionRef) {
       } else if (line === '' && eventType && dataLine) {
         try {
           const parsed = JSON.parse(dataLine);
-
           if (eventType === 'progress' && onProgress) {
             const text = extractProgressText(parsed);
             if (text) onProgress(text);
           }
-
           if (eventType === 'final') {
             finalReply = extractFinalReply(parsed);
-            if (parsed.thread_id && sessionRef) {
-              sessionRef.current = parsed.thread_id;
-            }
+            if (parsed.thread_id && sessionRef) sessionRef.current = parsed.thread_id;
           }
-
-          if (eventType === 'error') {
-            throw new Error(parsed.message || 'Stream error');
-          }
-        } catch (e) {
-          // ignore parse errors
-        }
-
+          if (eventType === 'error') throw new Error(parsed.message || 'Stream error');
+        } catch {}
         eventType = null;
         dataLine  = null;
       }

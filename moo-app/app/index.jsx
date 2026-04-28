@@ -3,17 +3,17 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Platform, useWindowDimensions, Animated,
 } from 'react-native';
-import { useJackDaw } from '../src/hooks/useJackDaw';
-import { TopNav } from '../src/components/TopNav';
-import { BottomNav } from '../src/components/BottomNav';
-import { ChatPanel } from '../src/components/ChatPanel';
-import { MapToolbar } from '../src/components/MapToolbar';
-import { FieldStatsBar } from '../src/components/FieldStatsBar';
-import FieldMap from '../src/components/FieldMap';
-import { NudgeModal } from '../src/components/NudgeModal';
+import { useJackDaw }       from '../src/hooks/useJackDaw';
+import { TopNav }           from '../src/components/TopNav';
+import { BottomNav }        from '../src/components/BottomNav';
+import { ChatPanel }        from '../src/components/ChatPanel';
+import { MapToolbar }       from '../src/components/MapToolbar';
+import { FieldStatsBar }    from '../src/components/FieldStatsBar';
+import FieldMap             from '../src/components/FieldMap';
+import { NudgeModal }       from '../src/components/NudgeModal';
 import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
-import { useAuth } from '../src/context/AuthContext';
-import { useTheme } from '../src/context/ThemeContext';
+import { useAuth }          from '../src/context/AuthContext';
+import { useTheme }         from '../src/context/ThemeContext';
 
 const MOBILE_BREAKPOINT = 860;
 
@@ -23,8 +23,8 @@ function now() {
 
 function AppSplash({ visible, progress, status }) {
   const opacity = useRef(new Animated.Value(1)).current;
-  const theme = useTheme();
-  const colors = theme?.colors ?? DarkColors;
+  const theme   = useTheme();
+  const colors  = theme?.colors ?? DarkColors;
 
   useEffect(() => {
     if (!visible) {
@@ -57,49 +57,48 @@ function AppSplash({ visible, progress, status }) {
 }
 
 export default function MainScreen() {
-  const { width } = useWindowDimensions();
-  const isMobile = width < MOBILE_BREAKPOINT;
+  const { width }  = useWindowDimensions();
+  const isMobile   = width < MOBILE_BREAKPOINT;
 
-  const theme = useTheme();
+  const theme  = useTheme();
   const colors = theme?.colors ?? DarkColors;
 
   // ── Firebase auth ──────────────────────────────────────────────
-  const auth = useAuth();
-  const user = auth?.user ?? null;
-  const customerId = user?.uid || null;
+  const auth        = useAuth();
+  const user        = auth?.user ?? null;
+  const customerId  = user?.uid || null;
+  const isSignedIn  = !!user;
   const prevUserRef = useRef(null);
 
   // ── Splash ─────────────────────────────────────────────────────
-  const [splashVisible, setSplashVisible] = useState(true);
+  const [splashVisible,  setSplashVisible]  = useState(true);
   const [splashProgress, setSplashProgress] = useState(0);
-  const [splashStatus, setSplashStatus] = useState('Initialising…');
+  const [splashStatus,   setSplashStatus]   = useState('Initialising…');
 
   // ── Map state ──────────────────────────────────────────────────
-  const [polygon, setPolygon] = useState(null);
+  const [polygon,    setPolygon]    = useState(null);
   const [fieldStats, setFieldStats] = useState(null);
-  const [mapLayer, setMapLayer] = useState('street');
-  const [drawMode, setDrawMode] = useState(null);
+  const [mapLayer,   setMapLayer]   = useState('street');
+  const [drawMode,   setDrawMode]   = useState(null);
 
   // ── Chat state ─────────────────────────────────────────────────
-  const [messages, setMessages] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [messages,     setMessages]     = useState([]);
+  const [isLoading,    setIsLoading]    = useState(false);
   const [streamStatus, setStreamStatus] = useState('');
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [activePanel, setActivePanel] = useState('map');
+  const [unreadCount,  setUnreadCount]  = useState(0);
+  const [activePanel,  setActivePanel]  = useState('map');
 
   // ── Nudge modal ────────────────────────────────────────────────
-  // Shows after first message if user is not signed in.
-  // Only shown once per session.
-  const [showNudge, setShowNudge] = useState(false);
+  const [showNudge,   setShowNudge]   = useState(false);
   const nudgeShownRef = useRef(false);
 
   // ── PWA install ────────────────────────────────────────────────
-  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installPrompt,  setInstallPrompt]  = useState(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
 
   const { connStatus, init, initMCP, sendMessage, clearHistory } = useJackDaw();
 
-  // ── Init JackDaw on mount — works for everyone ─────────────────
+  // ── Init JackDaw on mount ──────────────────────────────────────
   useEffect(() => {
     init((pct, label) => {
       setSplashProgress(pct);
@@ -108,17 +107,13 @@ export default function MainScreen() {
   }, [init]);
 
   // ── Connect MCP when user signs in ────────────────────────────
-  // Detects sign-in transition and silently upgrades the session
-  // with real satellite tools.
   useEffect(() => {
-    const wasSignedOut = !prevUserRef.current;
+    const wasSignedOut  = !prevUserRef.current;
     const isNowSignedIn = !!user;
     prevUserRef.current = user;
 
     if (wasSignedOut && isNowSignedIn) {
-      // User just signed in — connect MCP tools
       initMCP();
-      // Close nudge if open
       setShowNudge(false);
     }
   }, [user, initMCP]);
@@ -165,12 +160,13 @@ export default function MainScreen() {
         polygon,
         customerId,
         (status) => setStreamStatus(status),
+        isSignedIn,   // ← gates MCP tool calls in system prompt
       );
       appendMsg('assistant', reply);
       if (isMobile && activePanel === 'map') setUnreadCount(c => c + 1);
 
-      // Show nudge after first reply if user is not signed in
-      if (!user && !nudgeShownRef.current) {
+      // Show nudge after first reply if not signed in — only once
+      if (!isSignedIn && !nudgeShownRef.current) {
         nudgeShownRef.current = true;
         setTimeout(() => setShowNudge(true), 800);
       }
@@ -180,9 +176,8 @@ export default function MainScreen() {
       setIsLoading(false);
       setStreamStatus('');
     }
-  }, [sendMessage, polygon, customerId, isMobile, activePanel, user]);
+  }, [sendMessage, polygon, customerId, isSignedIn, isMobile, activePanel]);
 
-  // ── handleSend — works for everyone ───────────────────────────
   const handleSend = useCallback((text) => {
     doSend(text);
   }, [doSend]);
@@ -190,7 +185,7 @@ export default function MainScreen() {
   const handleClearChat = useCallback(() => {
     setMessages([]);
     setUnreadCount(0);
-    nudgeShownRef.current = false; // reset so nudge can show again
+    nudgeShownRef.current = false;
     clearHistory();
   }, [clearHistory]);
 
@@ -209,7 +204,7 @@ export default function MainScreen() {
     }
   };
 
-  const mapVisible = !isMobile || activePanel === 'map';
+  const mapVisible  = !isMobile || activePanel === 'map';
   const chatVisible = !isMobile || activePanel === 'chat';
 
   return (
@@ -220,7 +215,7 @@ export default function MainScreen() {
         fieldStats={fieldStats}
         showInstall={showInstallBtn}
         onInstall={handleInstall}
-        onSignIn={() => setShowNudge(true)}  // ← add this
+        onSignIn={() => setShowNudge(true)}
       />
 
       <View style={[styles.workspace, !isMobile && styles.workspaceDesktop]}>
@@ -282,7 +277,6 @@ export default function MainScreen() {
         />
       )}
 
-      {/* Nudge modal — shown after first message for unauthenticated users */}
       <NudgeModal
         visible={showNudge}
         onClose={() => setShowNudge(false)}
@@ -306,16 +300,16 @@ const styles = StyleSheet.create({
     flex: 1,
     ...Platform.select({ web: { minHeight: 0, overflow: 'hidden' } }),
   },
-  workspaceDesktop: { flexDirection: 'row' },
+  workspaceDesktop:   { flexDirection: 'row' },
   mapSection: {
     flex: 1,
     ...Platform.select({ web: { minHeight: 0 } }),
   },
   chatSectionDesktop: { width: CHAT_WIDTH, flexShrink: 0, borderLeftWidth: 1 },
-  chatSection: { ...Platform.select({ web: { minHeight: 0 } }) },
-  chatSectionMobile: { flex: 1 },
-  hidden: { display: 'none' },
-  mapContainer: { flex: 1, position: 'relative' },
+  chatSection:        { ...Platform.select({ web: { minHeight: 0 } }) },
+  chatSectionMobile:  { flex: 1 },
+  hidden:             { display: 'none' },
+  mapContainer:       { flex: 1, position: 'relative' },
   splash: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9999,
@@ -323,10 +317,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 9,
   },
-  splashCow: { fontSize: 48 },
-  splashWord: { fontFamily: Fonts.displayBold, fontSize: 30, letterSpacing: -1 },
-  splashSub: { fontFamily: Fonts.mono, fontSize: 9, letterSpacing: 1.5, marginTop: 3 },
-  splashTrack: { width: 140, height: 1.5, backgroundColor: 'rgba(128,128,128,0.15)', borderRadius: 1, marginTop: 18, overflow: 'hidden' },
-  splashBar: { height: 1.5, borderRadius: 1 },
+  splashCow:    { fontSize: 48 },
+  splashWord:   { fontFamily: Fonts.displayBold, fontSize: 30, letterSpacing: -1 },
+  splashSub:    { fontFamily: Fonts.mono, fontSize: 9, letterSpacing: 1.5, marginTop: 3 },
+  splashTrack:  { width: 140, height: 1.5, backgroundColor: 'rgba(128,128,128,0.15)', borderRadius: 1, marginTop: 18, overflow: 'hidden' },
+  splashBar:    { height: 1.5, borderRadius: 1 },
   splashStatus: { fontFamily: Fonts.mono, fontSize: 10 },
 });
