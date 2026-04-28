@@ -25,7 +25,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── HTTPS helper (buffered) ────────────────────────────────────────────────
 function httpsPost(urlStr, body, headers) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(urlStr);
@@ -47,7 +46,6 @@ function httpsPost(urlStr, body, headers) {
   });
 }
 
-// ── HTTPS streaming helper (pipes SSE) ────────────────────────────────────
 function httpsPostStream(urlStr, body, headers, onResponse) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(urlStr);
@@ -69,7 +67,6 @@ function httpsPostStream(urlStr, body, headers, onResponse) {
   });
 }
 
-// ── Shared: fetch JackDaw access token ────────────────────────────────────
 async function fetchAccessToken() {
   if (!CLIENT_ID || !CLIENT_SECRET) throw new Error('Missing credentials');
   const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
@@ -84,20 +81,14 @@ async function fetchAccessToken() {
     'Content-Length': Buffer.byteLength(formBody),
     'Accept':         'application/json',
   });
-  if (result.status < 200 || result.status >= 300) {
-    throw new Error(`Token ${result.status}: ${result.body}`);
-  }
+  if (result.status < 200 || result.status >= 300) throw new Error(`Token ${result.status}: ${result.body}`);
   return JSON.parse(result.body).access_token;
 }
 
-// ── GET /api/health ────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({
-  status:    'ok',
-  credsSet:  !!(CLIENT_ID && CLIENT_SECRET),
-  timestamp: new Date().toISOString(),
+  status: 'ok', credsSet: !!(CLIENT_ID && CLIENT_SECRET), timestamp: new Date().toISOString(),
 }));
 
-// ── POST /api/token ────────────────────────────────────────────────────────
 app.post('/api/token', async (req, res) => {
   try {
     res.json({ access_token: await fetchAccessToken(), token_type: 'bearer', expires_in: 3600 });
@@ -106,7 +97,6 @@ app.post('/api/token', async (req, res) => {
   }
 });
 
-// ── POST /api/mcp/connect ──────────────────────────────────────────────────
 app.post('/api/mcp/connect', async (req, res) => {
   try {
     const token = await fetchAccessToken();
@@ -126,9 +116,18 @@ app.post('/api/mcp/connect', async (req, res) => {
   }
 });
 
-// ── POST /api/chat (buffered, non-streaming) ───────────────────────────────
+// ── POST /api/chat ─────────────────────────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   try {
+    // ── DEBUG: log exactly what the frontend is sending ────────────────
+    const bodyObj = req.body;
+    console.log('=== /api/chat payload keys:', Object.keys(bodyObj));
+    console.log('=== has session_id:', !!bodyObj.session_id, '| value:', bodyObj.session_id);
+    console.log('=== has wkt:', !!bodyObj.wkt, '| value:', JSON.stringify(bodyObj.wkt));
+    console.log('=== has customer_id:', !!bodyObj.customer_id);
+    console.log('=== system prompt (first 100):', (bodyObj.system || '').slice(0, 100));
+    // ──────────────────────────────────────────────────────────────────
+
     const token = await fetchAccessToken();
     const body  = JSON.stringify(req.body);
     const hdrs  = {
@@ -145,9 +144,14 @@ app.post('/api/chat', async (req, res) => {
     let chatRes = null;
     for (const url of endpoints) {
       const attempt = await httpsPost(url, body, hdrs);
+      console.log(`=== tried ${url} → status ${attempt.status}`);
       if (attempt.status !== 404) { chatRes = attempt; break; }
     }
     if (!chatRes) return res.status(502).json({ error: 'chat_endpoint_not_found' });
+    console.log('=== JackDaw response status:', chatRes.status);
+    if (chatRes.status >= 400) {
+      console.log('=== JackDaw error body:', chatRes.body.slice(0, 300));
+    }
     res.status(chatRes.status);
     if (chatRes.headers['content-type']) res.set('Content-Type', chatRes.headers['content-type']);
     res.send(chatRes.body);
@@ -156,11 +160,16 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// ── POST /api/chat/stream (SSE streaming) ─────────────────────────────────
-// Pipes JackDaw SSE stream directly to the browser.
-// Events: progress, interruption, final, error, done
+// ── POST /api/chat/stream ──────────────────────────────────────────────────
 app.post('/api/chat/stream', async (req, res) => {
   try {
+    // ── DEBUG ──────────────────────────────────────────────────────────
+    const bodyObj = req.body;
+    console.log('=== /api/chat/stream payload keys:', Object.keys(bodyObj));
+    console.log('=== stream has session_id:', !!bodyObj.session_id, '| value:', bodyObj.session_id);
+    console.log('=== stream has wkt:', !!bodyObj.wkt);
+    // ──────────────────────────────────────────────────────────────────
+
     const token = await fetchAccessToken();
     const body  = JSON.stringify(req.body);
     const hdrs  = {
@@ -170,7 +179,6 @@ app.post('/api/chat/stream', async (req, res) => {
       'Accept':         'text/event-stream',
     };
 
-    // Set SSE headers on our response
     res.setHeader('Content-Type',  'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection',    'keep-alive');
@@ -181,13 +189,8 @@ app.post('/api/chat/stream', async (req, res) => {
       body,
       hdrs,
       (incoming) => {
-        // Pipe JackDaw SSE stream directly to browser
-        incoming.on('data', chunk => {
-          res.write(chunk);
-        });
-        incoming.on('end', () => {
-          res.end();
-        });
+        incoming.on('data', chunk => { res.write(chunk); });
+        incoming.on('end', () => { res.end(); });
         incoming.on('error', () => {
           res.write('event: error\ndata: {"message":"Stream error"}\n\n');
           res.end();
