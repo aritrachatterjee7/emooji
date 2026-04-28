@@ -132,20 +132,21 @@ export function useJackDaw() {
     isSignedIn = false,
   ) => {
 
-    // ── CRITICAL: clear session when not signed in ─────────────────────
-    // Prevents old signed-in session_id from being reused, which causes
-    // JackDaw to expect WKT geometry and return 400 errors.
+    // ── ALWAYS clear session when not signed in ────────────────────────
+    // Must happen before EVERY send — not just the first one.
+    // JackDaw saves thread_id from SSE stream responses, and if that
+    // thread_id gets reused in a subsequent unauthenticated request,
+    // JackDaw expects WKT geometry from the previous session → 400 error.
     if (!isSignedIn) {
       sessionRef.current = null;
     }
 
-    // ── System prompt — gates tool usage based on auth ─────────────────
+    // ── System prompt ──────────────────────────────────────────────────
     let systemCtx;
-
     if (!isSignedIn) {
       systemCtx = polygon
         ? `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management. The farmer has drawn a field in Europe. Use your training knowledge to answer their question. Do NOT attempt to call any external tools or APIs — provide answers from your agricultural expertise only.`
-        : `You are an expert agricultural analyst. No field drawn yet — ask the farmer to draw a field on the map first.`;
+        : `You are an expert agricultural analyst. Answer farming and land-related questions using your training knowledge only. Do NOT call any external tools or APIs.`;
     } else {
       systemCtx = polygon
         ? `You are an expert agricultural and environmental analyst. The farmer has drawn a polygon on the map. Use this GeoJSON geometry in ALL relevant MCP tool calls: ${polygon}\n\nAlways fetch real data using the available MCP tools. Never fabricate NDVI, weather, or terrain values.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}. Pass this to all private MCP tool calls (get_my_paddocks, get_paddock_rating, get_animals_in_paddock, get_animal_track, get_ungrazed_paddocks, get_low_ndvi_paddocks, recommend_paddock_for_herd_move).` : ''}`
@@ -154,12 +155,12 @@ export function useJackDaw() {
 
     historyRef.current.push({ role: 'user', content: userText });
 
+    // ── Build payload — never include session_id or WKT when not signed in
     const payload = {
       messages: historyRef.current,
       system:   systemCtx,
     };
 
-    // Only send session_id, customer_id and WKT when signed in
     if (isSignedIn) {
       if (sessionRef.current) payload.session_id = sessionRef.current;
       if (customerId) payload.customer_id = customerId;
@@ -168,6 +169,7 @@ export function useJackDaw() {
         if (wkt) payload.wkt = { srid: 4326, wkt };
       }
     }
+    // When NOT signed in: no session_id, no customer_id, no wkt — ever.
 
     // ── Try streaming first ────────────────────────────────────────────
     try {
@@ -178,6 +180,7 @@ export function useJackDaw() {
       });
 
       if (res.ok && res.body) {
+        // Pass null as sessionRef when not signed in so thread_id is NEVER saved
         const reply = await readSSEStream(res.body, onProgress, isSignedIn ? sessionRef : null);
         if (reply) {
           historyRef.current.push({ role: 'assistant', content: reply });
@@ -233,6 +236,7 @@ export function useJackDaw() {
 }
 
 // ── SSE stream reader ──────────────────────────────────────────────────────
+// sessionRef is null when not signed in — thread_id is never saved in that case.
 async function readSSEStream(body, onProgress, sessionRef) {
   const reader   = body.getReader();
   const decoder  = new TextDecoder();
@@ -258,17 +262,27 @@ async function readSSEStream(body, onProgress, sessionRef) {
       } else if (line === '' && eventType && dataLine) {
         try {
           const parsed = JSON.parse(dataLine);
+
           if (eventType === 'progress' && onProgress) {
             const text = extractProgressText(parsed);
             if (text) onProgress(text);
           }
+
           if (eventType === 'final') {
             finalReply = extractFinalReply(parsed);
-            // Only save thread_id if sessionRef is provided (signed in)
-            if (sessionRef && parsed.thread_id) sessionRef.current = parsed.thread_id;
+            // Only save thread_id if sessionRef provided (i.e. signed in)
+            if (sessionRef !== null && parsed.thread_id) {
+              sessionRef.current = parsed.thread_id;
+            }
           }
-          if (eventType === 'error') throw new Error(parsed.message || 'Stream error');
-        } catch {}
+
+          if (eventType === 'error') {
+            throw new Error(parsed.message || 'Stream error');
+          }
+        } catch (e) {
+          // ignore individual parse errors
+        }
+
         eventType = null;
         dataLine  = null;
       }
