@@ -70,6 +70,7 @@ def _get_copernicus_token() -> str | None:
     client_id = os.environ.get("COPERNICUS_CLIENT_ID")
     client_secret = os.environ.get("COPERNICUS_CLIENT_SECRET")
     if not client_id or not client_secret:
+        logger.warning("Copernicus credentials not set in environment variables.")
         return None
     try:
         resp = httpx.post(
@@ -93,6 +94,8 @@ def _search_sentinel2_scenes(
 ) -> list[dict]:
     """
     Search the Copernicus catalogue for Sentinel-2 L2A scenes.
+    Sends the Bearer token in the Authorization header — required since
+    Copernicus began enforcing auth on catalogue requests.
     Returns a list of item metadata dicts.
     """
     min_lon, min_lat, max_lon, max_lat = bbox
@@ -106,8 +109,22 @@ def _search_sentinel2_scenes(
         "sortParam": "startDate",
         "sortOrder": "descending",
     }
+
+    # ── Auth token — required by Copernicus catalogue ──────────────────
+    token = _get_copernicus_token()
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    else:
+        logger.warning("No Copernicus token available — catalogue request may fail with 403.")
+
     try:
-        resp = httpx.get(CATALOGUE_SEARCH_URL, params=params, timeout=20)
+        resp = httpx.get(
+            CATALOGUE_SEARCH_URL,
+            params=params,
+            headers=headers,
+            timeout=20,
+        )
         resp.raise_for_status()
         features = resp.json().get("features", [])
         return features
@@ -123,7 +140,6 @@ def _estimate_ndvi_from_spectral_indices(scene: dict) -> dict | None:
     Returns dict with mean/min/max or None.
     """
     props = scene.get("properties", {})
-    # Some STAC providers expose pre-computed statistics
     for key in ("ndvi_mean", "ndvi", "vegetation_index"):
         if key in props:
             val = float(props[key])
