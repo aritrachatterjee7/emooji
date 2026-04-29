@@ -1,5 +1,5 @@
 // src/components/FieldMap.web.jsx
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useCallback, useState, useImperativeHandle, forwardRef } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import L from 'leaflet';
 import 'leaflet-draw';
@@ -8,7 +8,6 @@ import 'leaflet-draw/dist/leaflet.draw.css';
 import { useTheme } from '../context/ThemeContext';
 import { Fonts, Radius } from '../constants/tokens';
 
-// Fix broken default icon paths in bundlers
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -42,40 +41,45 @@ function extractStats(layer) {
   return { areaHa, centroid, perimKm, pts };
 }
 
-export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawMode, onDrawModeChange }) {
+// Use forwardRef so parent can call fieldMapRef.current.clearField()
+const FieldMap = forwardRef(function FieldMap(
+  { onFieldDrawn, onFieldCleared, mapLayer, drawMode, onDrawModeChange },
+  ref
+) {
   const { colors } = useTheme();
-  const containerRef = useRef(null);
-  const mapRef       = useRef(null);
-  const drawnRef     = useRef(null);
-  const drawCtrlRef  = useRef(null);
-  const activeDrawRef = useRef(null); // tracks active draw handler
-  const streetRef    = useRef(null);
-  const satRef       = useRef(null);
+  const containerRef  = useRef(null);
+  const mapRef        = useRef(null);
+  const drawnRef      = useRef(null);
+  const drawCtrlRef   = useRef(null);
+  const activeDrawRef = useRef(null);
+  const streetRef     = useRef(null);
+  const satRef        = useRef(null);
 
-  // ── Drawing state for custom toolbar ──────────────────────────
   const [isDrawing,      setIsDrawing]      = useState(false);
   const [vertexCount,    setVertexCount]    = useState(0);
   const [locating,       setLocating]       = useState(false);
   const [locationMarker, setLocationMarker] = useState(null);
 
-  // ── Init map ───────────────────────────────────────────────────
+  // ── Expose clearField to parent via ref ───────────────────────
+  useImperativeHandle(ref, () => ({
+    clearField: () => {
+      if (drawnRef.current) drawnRef.current.clearLayers();
+      if (activeDrawRef.current) {
+        try { activeDrawRef.current.disable(); } catch {}
+        activeDrawRef.current = null;
+      }
+      setIsDrawing(false);
+      setVertexCount(0);
+    },
+  }));
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const map = L.map(containerRef.current, {
-      center: [49.8731, 8.6673],
-      zoom: 14,
-      zoomControl: true,
-    });
+    const map = L.map(containerRef.current, { center: [49.8731, 8.6673], zoom: 14, zoomControl: true });
 
-    streetRef.current = L.tileLayer(
-      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { attribution: '© OSM', maxZoom: 19 }
-    );
-    satRef.current = L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { attribution: '© Esri', maxZoom: 19 }
-    );
+    streetRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OSM', maxZoom: 19 });
+    satRef.current    = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', maxZoom: 19 });
     streetRef.current.addTo(map);
     map.zoomControl.setPosition('bottomright');
 
@@ -86,22 +90,18 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
     const drawCtrl = new L.Control.Draw({
       position: 'topright',
       draw: {
-        polygon:     { allowIntersection: false, showArea: true, shapeOptions: DRAW_STYLE },
-        rectangle:   { shapeOptions: DRAW_STYLE },
-        polyline:    false,
-        circle:      false,
-        marker:      false,
+        polygon:      { allowIntersection: false, showArea: true, shapeOptions: DRAW_STYLE },
+        rectangle:    { shapeOptions: DRAW_STYLE },
+        polyline:     false,
+        circle:       false,
+        marker:       false,
         circlemarker: false,
       },
       edit: { featureGroup: drawn, remove: true },
     });
-    // Don't add control to map — we use our own toolbar
     drawCtrlRef.current = drawCtrl;
 
-    // Track vertex count during polygon draw
-    map.on('draw:drawvertex', () => {
-      setVertexCount(c => c + 1);
-    });
+    map.on('draw:drawvertex', () => setVertexCount(c => c + 1));
 
     map.on(L.Draw.Event.CREATED, e => {
       drawn.clearLayers();
@@ -117,11 +117,8 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
       e.layers.eachLayer(l => onFieldDrawn(JSON.stringify(l.toGeoJSON().geometry), extractStats(l)));
     });
 
-    map.on(L.Draw.Event.DELETED, () => {
-      onFieldCleared();
-    });
+    map.on(L.Draw.Event.DELETED, () => onFieldCleared());
 
-    // Cancel draw on Escape
     map.on('draw:canceled', () => {
       setIsDrawing(false);
       setVertexCount(0);
@@ -134,16 +131,12 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── React to drawMode prop ─────────────────────────────────────
   useEffect(() => {
     if (!mapRef.current || !drawCtrlRef.current) return;
-
-    // Disable any active draw first
     if (activeDrawRef.current) {
       try { activeDrawRef.current.disable(); } catch {}
       activeDrawRef.current = null;
     }
-
     if (drawMode === 'polygon') {
       const handler = new L.Draw.Polygon(mapRef.current, drawCtrlRef.current.options.draw.polygon);
       handler.enable();
@@ -162,7 +155,6 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
     }
   }, [drawMode]);
 
-  // ── React to layer changes ─────────────────────────────────────
   useEffect(() => {
     if (!mapRef.current) return;
     if (mapLayer === 'satellite') {
@@ -174,22 +166,17 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
     }
   }, [mapLayer]);
 
-  // ── Finish polygon ─────────────────────────────────────────────
   const handleFinish = useCallback(() => {
-    if (activeDrawRef.current && activeDrawRef.current.completeShape) {
-      activeDrawRef.current.completeShape();
-    }
+    if (activeDrawRef.current?.completeShape) activeDrawRef.current.completeShape();
   }, []);
 
-  // ── Undo last vertex ───────────────────────────────────────────
   const handleUndo = useCallback(() => {
-    if (activeDrawRef.current && activeDrawRef.current.deleteLastVertex) {
+    if (activeDrawRef.current?.deleteLastVertex) {
       activeDrawRef.current.deleteLastVertex();
       setVertexCount(c => Math.max(0, c - 1));
     }
   }, []);
 
-  // ── Cancel drawing ─────────────────────────────────────────────
   const handleCancel = useCallback(() => {
     if (activeDrawRef.current) {
       try { activeDrawRef.current.disable(); } catch {}
@@ -200,72 +187,34 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
     onDrawModeChange(null);
   }, [onDrawModeChange]);
 
-  // ── Get current location ───────────────────────────────────────
   const handleLocate = useCallback(() => {
-    if (!mapRef.current) return;
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
-      return;
-    }
+    if (!mapRef.current || !navigator.geolocation) return;
     setLocating(true);
-
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         const map = mapRef.current;
-
-        // Remove old marker
-        if (locationMarker) {
-          map.removeLayer(locationMarker);
-        }
-
-        // Add location marker
+        if (locationMarker) map.removeLayer(locationMarker);
         const marker = L.circleMarker([latitude, longitude], {
-          radius: 8,
-          fillColor: '#00e676',
-          color: '#fff',
-          weight: 2,
-          opacity: 1,
-          fillOpacity: 0.9,
+          radius: 8, fillColor: '#00e676', color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.9,
         }).addTo(map);
-
-        // Add accuracy circle
         L.circle([latitude, longitude], {
-          radius: accuracy,
-          fillColor: '#00e676',
-          fillOpacity: 0.08,
-          color: '#00e676',
-          weight: 1,
+          radius: accuracy, fillColor: '#00e676', fillOpacity: 0.08, color: '#00e676', weight: 1,
         }).addTo(map);
-
         marker.bindPopup(`📍 You are here<br>Accuracy: ±${Math.round(accuracy)}m`).openPopup();
-
         setLocationMarker(marker);
         map.setView([latitude, longitude], 15);
         setLocating(false);
       },
-      (err) => {
-        setLocating(false);
-        if (err.code === err.PERMISSION_DENIED) {
-          alert('Location access denied. Please allow location in your browser settings.');
-        } else {
-          alert('Could not get your location. Please try again.');
-        }
-      },
+      () => setLocating(false),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
   }, [locationMarker]);
 
   return (
     <View style={styles.container}>
-      {/* Map */}
-      <div
-        ref={containerRef}
-        style={{ width: '100%', height: '100%', background: '#080c10' }}
-        data-layer={mapLayer}
-      />
+      <div ref={containerRef} style={{ width: '100%', height: '100%', background: '#080c10' }} data-layer={mapLayer} />
 
-      {/* Drawing toolbar — shown while drawing polygon */}
       {isDrawing && drawMode === 'polygon' && (
         <View style={[styles.drawToolbar, { backgroundColor: colors.bgGlass, borderColor: colors.greenBorder }]}>
           <Text style={[styles.drawHint, { color: colors.textMuted }]}>
@@ -275,49 +224,33 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
           </Text>
           <View style={styles.drawBtns}>
             {vertexCount >= 3 && (
-              <TouchableOpacity
-                style={[styles.drawBtn, { backgroundColor: colors.green }]}
-                onPress={handleFinish}
-              >
+              <TouchableOpacity style={[styles.drawBtn, { backgroundColor: colors.green }]} onPress={handleFinish}>
                 <Text style={styles.drawBtnText}>✓ Finish Polygon</Text>
               </TouchableOpacity>
             )}
             {vertexCount > 0 && (
-              <TouchableOpacity
-                style={[styles.drawBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid, borderWidth: 1 }]}
-                onPress={handleUndo}
-              >
+              <TouchableOpacity style={[styles.drawBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid, borderWidth: 1 }]} onPress={handleUndo}>
                 <Text style={[styles.drawBtnText, { color: colors.textSecondary }]}>↩ Undo Point</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={[styles.drawBtn, { backgroundColor: colors.bgElevated, borderColor: colors.danger, borderWidth: 1 }]}
-              onPress={handleCancel}
-            >
+            <TouchableOpacity style={[styles.drawBtn, { backgroundColor: colors.bgElevated, borderColor: colors.danger, borderWidth: 1 }]} onPress={handleCancel}>
               <Text style={[styles.drawBtnText, { color: colors.danger }]}>✕ Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* Rectangle drawing hint */}
       {isDrawing && drawMode === 'rectangle' && (
         <View style={[styles.drawToolbar, { backgroundColor: colors.bgGlass, borderColor: colors.greenBorder }]}>
-          <Text style={[styles.drawHint, { color: colors.textMuted }]}>
-            Click and drag to draw a rectangle
-          </Text>
+          <Text style={[styles.drawHint, { color: colors.textMuted }]}>Click and drag to draw a rectangle</Text>
           <View style={styles.drawBtns}>
-            <TouchableOpacity
-              style={[styles.drawBtn, { backgroundColor: colors.bgElevated, borderColor: colors.danger, borderWidth: 1 }]}
-              onPress={handleCancel}
-            >
+            <TouchableOpacity style={[styles.drawBtn, { backgroundColor: colors.bgElevated, borderColor: colors.danger, borderWidth: 1 }]} onPress={handleCancel}>
               <Text style={[styles.drawBtnText, { color: colors.danger }]}>✕ Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* Location button */}
       <TouchableOpacity
         style={[styles.locateBtn, { backgroundColor: colors.bgGlass, borderColor: colors.borderMid }]}
         onPress={handleLocate}
@@ -330,56 +263,30 @@ export default function FieldMap({ onFieldDrawn, onFieldCleared, mapLayer, drawM
       </TouchableOpacity>
     </View>
   );
-}
+});
+
+export default FieldMap;
 
 const styles = StyleSheet.create({
   container: { flex: 1, position: 'relative' },
-
-  // Drawing toolbar at bottom of map
   drawToolbar: {
     position: 'absolute',
-    bottom: 70,
-    left: 12,
-    right: 12,
+    bottom: 70, left: 12, right: 12,
     borderRadius: Radius.lg,
     borderWidth: 1,
     padding: 12,
     gap: 10,
     zIndex: 1000,
-    ...Platform.select({
-      web: { backdropFilter: 'blur(8px)' },
-    }),
+    ...Platform.select({ web: { backdropFilter: 'blur(8px)' } }),
   },
-  drawHint: {
-    fontFamily: Fonts.mono,
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  drawBtns: {
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-  },
-  drawBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: Radius.md,
-    alignItems: 'center',
-  },
-  drawBtnText: {
-    fontFamily: Fonts.bodyMedium,
-    fontSize: 13,
-    color: '#07090e',
-  },
-
-  // Location button — bottom left above zoom
+  drawHint:    { fontFamily: Fonts.mono, fontSize: 12, textAlign: 'center' },
+  drawBtns:    { flexDirection: 'row', gap: 8, justifyContent: 'center', flexWrap: 'wrap' },
+  drawBtn:     { paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.md, alignItems: 'center' },
+  drawBtnText: { fontFamily: Fonts.bodyMedium, fontSize: 13, color: '#07090e' },
   locateBtn: {
     position: 'absolute',
-    bottom: 100,
-    right: 10,
-    width: 36,
-    height: 36,
+    bottom: 100, right: 10,
+    width: 36, height: 36,
     borderRadius: 6,
     borderWidth: 1,
     alignItems: 'center',

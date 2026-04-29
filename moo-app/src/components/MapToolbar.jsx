@@ -11,7 +11,7 @@ function ToolBtn({ label, icon, onPress, active = false, danger = false, colors 
         styles.btn,
         { backgroundColor: colors.bgElevated, borderColor: colors.border },
         active && { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder },
-        danger && { borderColor: colors.border },
+        danger && { borderColor: colors.danger },
       ]}
       onPress={onPress}
       activeOpacity={0.7}
@@ -39,6 +39,9 @@ function ToolBtn({ label, icon, onPress, active = false, danger = false, colors 
 export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLayerStreet, mapLayer, drawMode, fieldStats }) {
   const { colors } = useTheme();
 
+  // Clear is only red/active when a field has been drawn
+  const hasFiel = !!fieldStats;
+
   return (
     <View style={[styles.wrapper, { backgroundColor: colors.bgGlass, borderBottomColor: colors.border }]}>
       <ScrollView
@@ -46,14 +49,13 @@ export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLaye
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
       >
-        {/* Draw tools — active only when drawMode matches */}
-        <ToolBtn label="Polygon"   icon="△" active={drawMode === 'polygon'}   onPress={onPolygon}    colors={colors} />
-        <ToolBtn label="Rectangle" icon="▭" active={drawMode === 'rectangle'} onPress={onRectangle}  colors={colors} />
-        <ToolBtn label="Clear"     icon="✕" danger                             onPress={onClear}      colors={colors} />
+        <ToolBtn label="Polygon"   icon="△" active={drawMode === 'polygon'}   onPress={onPolygon}   colors={colors} />
+        <ToolBtn label="Rectangle" icon="▭" active={drawMode === 'rectangle'} onPress={onRectangle} colors={colors} />
+        {/* Clear only shows danger styling when a field is drawn */}
+        <ToolBtn label="Clear" icon="✕" danger={hasFiel} onPress={onClear} colors={colors} />
 
         <View style={[styles.sep, { backgroundColor: colors.borderMid }]} />
 
-        {/* Layer toggle */}
         <ToolBtn label="Sat"    icon="◉" active={mapLayer === 'satellite'} onPress={onLayerSat}    colors={colors} />
         <ToolBtn label="Street" icon="⌂" active={mapLayer === 'street'}   onPress={onLayerStreet} colors={colors} />
       </ScrollView>
@@ -68,7 +70,7 @@ export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLaye
 }
 
 const styles = StyleSheet.create({
-  wrapper:  { borderBottomWidth: 1 },
+  wrapper: { borderBottomWidth: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

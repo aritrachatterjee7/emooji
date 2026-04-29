@@ -29,9 +29,7 @@ function AppSplash({ visible, progress, status }) {
   useEffect(() => {
     if (!visible) {
       Animated.timing(opacity, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: Platform.OS !== 'web',
+        toValue: 0, duration: 500, useNativeDriver: Platform.OS !== 'web',
       }).start();
     }
   }, [visible]);
@@ -63,42 +61,38 @@ export default function MainScreen() {
   const theme  = useTheme();
   const colors = theme?.colors ?? DarkColors;
 
-  // ── Firebase auth ──────────────────────────────────────────────
   const auth        = useAuth();
   const user        = auth?.user ?? null;
   const customerId  = user?.uid || null;
   const isSignedIn  = !!user;
   const prevUserRef = useRef(null);
 
-  // ── Splash ─────────────────────────────────────────────────────
+  // ── Ref to FieldMap — used to clear Leaflet layers ────────────
+  const fieldMapRef = useRef(null);
+
   const [splashVisible,  setSplashVisible]  = useState(true);
   const [splashProgress, setSplashProgress] = useState(0);
   const [splashStatus,   setSplashStatus]   = useState('Initialising…');
 
-  // ── Map state ──────────────────────────────────────────────────
   const [polygon,    setPolygon]    = useState(null);
   const [fieldStats, setFieldStats] = useState(null);
   const [mapLayer,   setMapLayer]   = useState('street');
   const [drawMode,   setDrawMode]   = useState(null);
 
-  // ── Chat state ─────────────────────────────────────────────────
   const [messages,     setMessages]     = useState([]);
   const [isLoading,    setIsLoading]    = useState(false);
   const [streamStatus, setStreamStatus] = useState('');
   const [unreadCount,  setUnreadCount]  = useState(0);
   const [activePanel,  setActivePanel]  = useState('map');
 
-  // ── Nudge modal ────────────────────────────────────────────────
-  const [showNudge,   setShowNudge]   = useState(false);
+  const [showNudge,    setShowNudge]    = useState(false);
   const nudgeShownRef = useRef(false);
 
-  // ── PWA install ────────────────────────────────────────────────
   const [installPrompt,  setInstallPrompt]  = useState(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
 
   const { connStatus, init, initMCP, sendMessage, clearHistory } = useJackDaw();
 
-  // ── Init JackDaw on mount ──────────────────────────────────────
   useEffect(() => {
     init((pct, label) => {
       setSplashProgress(pct);
@@ -106,19 +100,16 @@ export default function MainScreen() {
     }).finally(() => setSplashVisible(false));
   }, [init]);
 
-  // ── Connect MCP when user signs in ────────────────────────────
   useEffect(() => {
     const wasSignedOut  = !prevUserRef.current;
     const isNowSignedIn = !!user;
     prevUserRef.current = user;
-
     if (wasSignedOut && isNowSignedIn) {
       initMCP();
       setShowNudge(false);
     }
   }, [user, initMCP]);
 
-  // ── PWA install prompt ─────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const handler = (e) => {
@@ -134,19 +125,21 @@ export default function MainScreen() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // ── Field drawn ────────────────────────────────────────────────
   const handleFieldDrawn = useCallback((poly, stats) => {
     setPolygon(poly);
     setFieldStats(stats);
     if (isMobile) setUnreadCount(c => c + 1);
   }, [isMobile]);
 
+  // ── Clear field — clears both React state AND Leaflet map layers
   const handleFieldCleared = useCallback(() => {
     setPolygon(null);
     setFieldStats(null);
+    setDrawMode(null);
+    // Clear the actual Leaflet drawn layers via ref
+    fieldMapRef.current?.clearField();
   }, []);
 
-  // ── Core send ─────────────────────────────────────────────────
   const appendMsg = (role, content) =>
     setMessages(prev => [...prev, { role, content, time: now() }]);
 
@@ -156,16 +149,12 @@ export default function MainScreen() {
     setStreamStatus('Thinking…');
     try {
       const reply = await sendMessage(
-        text,
-        polygon,
-        customerId,
+        text, polygon, customerId,
         (status) => setStreamStatus(status),
-        isSignedIn,   // ← gates MCP tool calls in system prompt
+        isSignedIn,
       );
       appendMsg('assistant', reply);
       if (isMobile && activePanel === 'map') setUnreadCount(c => c + 1);
-
-      // Show nudge after first reply if not signed in — only once
       if (!isSignedIn && !nudgeShownRef.current) {
         nudgeShownRef.current = true;
         setTimeout(() => setShowNudge(true), 800);
@@ -178,9 +167,7 @@ export default function MainScreen() {
     }
   }, [sendMessage, polygon, customerId, isSignedIn, isMobile, activePanel]);
 
-  const handleSend = useCallback((text) => {
-    doSend(text);
-  }, [doSend]);
+  const handleSend = useCallback((text) => { doSend(text); }, [doSend]);
 
   const handleClearChat = useCallback(() => {
     setMessages([]);
@@ -220,7 +207,6 @@ export default function MainScreen() {
 
       <View style={[styles.workspace, !isMobile && styles.workspaceDesktop]}>
 
-        {/* Map section */}
         <View style={[
           styles.mapSection,
           { backgroundColor: colors.bgBase },
@@ -229,7 +215,7 @@ export default function MainScreen() {
           <MapToolbar
             onPolygon={() => setDrawMode('polygon')}
             onRectangle={() => setDrawMode('rectangle')}
-            onClear={() => { handleFieldCleared(); setDrawMode(null); }}
+            onClear={handleFieldCleared}
             onLayerSat={() => setMapLayer('satellite')}
             onLayerStreet={() => setMapLayer('street')}
             mapLayer={mapLayer}
@@ -238,6 +224,7 @@ export default function MainScreen() {
           />
           <View style={styles.mapContainer}>
             <FieldMap
+              ref={fieldMapRef}
               onFieldDrawn={handleFieldDrawn}
               onFieldCleared={handleFieldCleared}
               mapLayer={mapLayer}
@@ -248,7 +235,6 @@ export default function MainScreen() {
           </View>
         </View>
 
-        {/* Chat section */}
         <View style={[
           styles.chatSection,
           { backgroundColor: colors.bgSurface },
@@ -292,19 +278,10 @@ export default function MainScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    ...Platform.select({ web: { height: '100vh', overflow: 'hidden' } }),
-  },
-  workspace: {
-    flex: 1,
-    ...Platform.select({ web: { minHeight: 0, overflow: 'hidden' } }),
-  },
+  root:               { flex: 1, ...Platform.select({ web: { height: '100vh', overflow: 'hidden' } }) },
+  workspace:          { flex: 1, ...Platform.select({ web: { minHeight: 0, overflow: 'hidden' } }) },
   workspaceDesktop:   { flexDirection: 'row' },
-  mapSection: {
-    flex: 1,
-    ...Platform.select({ web: { minHeight: 0 } }),
-  },
+  mapSection:         { flex: 1, ...Platform.select({ web: { minHeight: 0 } }) },
   chatSectionDesktop: { width: CHAT_WIDTH, flexShrink: 0, borderLeftWidth: 1 },
   chatSection:        { ...Platform.select({ web: { minHeight: 0 } }) },
   chatSectionMobile:  { flex: 1 },

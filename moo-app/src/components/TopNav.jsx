@@ -1,6 +1,6 @@
 // src/components/TopNav.jsx
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Fonts, Radius, Spacing, NAV_HEIGHT, DarkColors } from '../constants/tokens';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +11,55 @@ function StatusDot({ state, colors }) {
   return <View style={[styles.dot, { backgroundColor: color }]} />;
 }
 
+// ── Detect platform ────────────────────────────────────────────────────────
+function getInstallPlatform() {
+  if (Platform.OS !== 'web') return null;
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const isAndroid = /Android/.test(ua);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+  if (isStandalone) return null; // already installed
+  if (isIOS) return 'ios';
+  if (isAndroid) return 'android';
+  return 'desktop';
+}
+
+// ── iOS install instructions modal ────────────────────────────────────────
+function IOSInstallModal({ visible, onClose, colors }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={iosStyles.backdrop} activeOpacity={1} onPress={onClose} />
+      <View style={[iosStyles.sheet, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
+        <TouchableOpacity style={iosStyles.closeBtn} onPress={onClose}>
+          <Text style={[iosStyles.closeText, { color: colors.textMuted }]}>✕</Text>
+        </TouchableOpacity>
+        <Text style={[iosStyles.title, { color: colors.textPrimary }]}>Install eMooJI</Text>
+        <Text style={[iosStyles.sub, { color: colors.textMuted }]}>Add to your Home Screen for the best experience</Text>
+        {[
+          { step: '1', icon: '⬆️', text: 'Tap the Share button at the bottom of Safari' },
+          { step: '2', icon: '📲', text: 'Scroll down and tap "Add to Home Screen"' },
+          { step: '3', icon: '✅', text: 'Tap "Add" in the top right corner' },
+        ].map(({ step, icon, text }) => (
+          <View key={step} style={[iosStyles.row, { borderColor: colors.border }]}>
+            <View style={[iosStyles.stepBadge, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}>
+              <Text style={[iosStyles.stepNum, { color: colors.green }]}>{step}</Text>
+            </View>
+            <Text style={iosStyles.stepIcon}>{icon}</Text>
+            <Text style={[iosStyles.stepText, { color: colors.textPrimary }]}>{text}</Text>
+          </View>
+        ))}
+        <TouchableOpacity
+          style={[iosStyles.doneBtn, { backgroundColor: colors.green }]}
+          onPress={onClose}
+        >
+          <Text style={iosStyles.doneBtnText}>Got it</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
 export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignIn }) {
   const insets = useSafeAreaInsets();
   const { state, label } = connStatus;
@@ -18,119 +67,146 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
   const { logout, user } = useAuth() ?? { logout: () => {}, user: null };
   const { isDark, toggleTheme, colors } = useTheme() ?? { isDark: false, toggleTheme: () => {}, colors: DarkColors };
 
+  const [installPlatform, setInstallPlatform] = useState(null);
+  const [showIOSModal,    setShowIOSModal]    = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      setInstallPlatform(getInstallPlatform());
+    }
+  }, []);
+
+  const handleInstallPress = () => {
+    if (installPlatform === 'ios') {
+      setShowIOSModal(true);
+    } else if (installPlatform === 'android' || installPlatform === 'desktop') {
+      // Use the native PWA install prompt if available
+      if (onInstall) onInstall();
+    }
+  };
+
+  // Show install button if:
+  // - Native PWA prompt available (desktop/android via beforeinstallprompt)
+  // - OR on iOS (always show since iOS never fires beforeinstallprompt)
+  const showInstallButton = showInstall || installPlatform === 'ios';
+
   const handleLogout = () => {
     if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to sign out?')) {
-        logout();
-      }
+      if (window.confirm('Are you sure you want to sign out?')) logout();
     } else {
-      Alert.alert(
-        'Sign out',
-        'Are you sure you want to sign out?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign out', style: 'destructive', onPress: logout },
-        ]
-      );
+      Alert.alert('Sign out', 'Are you sure you want to sign out?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: logout },
+      ]);
     }
   };
 
   return (
-    <View style={[
-      styles.nav,
-      {
-        paddingTop: insets.top || (Platform.OS === 'android' ? 8 : 0),
-        backgroundColor: colors.bgGlass,
-        borderBottomColor: colors.border,
-      }
-    ]}>
+    <>
+      <View style={[
+        styles.nav,
+        {
+          paddingTop: insets.top || (Platform.OS === 'android' ? 8 : 0),
+          backgroundColor: colors.bgGlass,
+          borderBottomColor: colors.border,
+        }
+      ]}>
 
-      {/* Brand */}
-      <View style={styles.brand}>
-        <Text style={styles.cow}>🐄</Text>
-        <Text style={[styles.name, { color: colors.textPrimary }]}>
-          eMoo<Text style={{ color: colors.green }}>JI</Text>
-        </Text>
-      </View>
-
-      {/* Field info (centre) */}
-      {fieldStats && (
-        <View style={styles.center}>
-          <Text style={[styles.centerArea, { color: colors.textSecondary }]}>{fieldStats.areaHa} ha</Text>
-          <Text style={[styles.centerDot, { color: colors.textMuted }]}>·</Text>
-          <Text style={[styles.centerCoords, { color: colors.textMuted }]} numberOfLines={1}>{fieldStats.centroid}</Text>
-        </View>
-      )}
-
-      {/* Right side */}
-      <View style={styles.right}>
-
-        {/* Status badge */}
-        <View style={[
-          styles.badge,
-          { borderColor: colors.borderMid, backgroundColor: colors.bgElevated },
-          state === 'online' && { borderColor: colors.greenBorder },
-        ]}>
-          <StatusDot state={state} colors={colors} />
-          <Text style={[
-            styles.badgeLabel,
-            { color: state === 'online' ? colors.green : state === 'connecting' ? colors.warning : colors.danger }
-          ]}>{label}</Text>
+        {/* Brand */}
+        <View style={styles.brand}>
+          <Text style={styles.cow}>🐄</Text>
+          <Text style={[styles.name, { color: colors.textPrimary }]}>
+            eMoo<Text style={{ color: colors.green }}>JI</Text>
+          </Text>
         </View>
 
-        {/* Dark / Light toggle */}
-        <TouchableOpacity
-          style={[styles.themeBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
-          onPress={toggleTheme}
-          accessibilityLabel="Toggle dark/light mode"
-        >
-          <Text style={styles.themeIcon}>{isDark ? '☀️' : '🌙'}</Text>
-        </TouchableOpacity>
-
-        {/* Install PWA button */}
-        {showInstall && (
-          <TouchableOpacity style={[styles.installBtn, { backgroundColor: colors.green }]} onPress={onInstall}>
-            <Text style={styles.installText}>Install</Text>
-          </TouchableOpacity>
+        {/* Field info (centre) */}
+        {fieldStats && (
+          <View style={styles.center}>
+            <Text style={[styles.centerArea, { color: colors.textSecondary }]}>{fieldStats.areaHa} ha</Text>
+            <Text style={[styles.centerDot,  { color: colors.textMuted }]}>·</Text>
+            <Text style={[styles.centerCoords, { color: colors.textMuted }]} numberOfLines={1}>{fieldStats.centroid}</Text>
+          </View>
         )}
 
-        {/* Sign In button — shown when not logged in */}
-        {!user && (
+        {/* Right side */}
+        <View style={styles.right}>
+
+          {/* Status badge */}
+          <View style={[
+            styles.badge,
+            { borderColor: colors.borderMid, backgroundColor: colors.bgElevated },
+            state === 'online' && { borderColor: colors.greenBorder },
+          ]}>
+            <StatusDot state={state} colors={colors} />
+            <Text style={[
+              styles.badgeLabel,
+              { color: state === 'online' ? colors.green : state === 'connecting' ? colors.warning : colors.danger }
+            ]}>{label}</Text>
+          </View>
+
+          {/* Dark / Light toggle */}
           <TouchableOpacity
-            style={[styles.signInBtn, { backgroundColor: colors.green }]}
-            onPress={onSignIn}
-            activeOpacity={0.85}
+            style={[styles.themeBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
+            onPress={toggleTheme}
           >
-            <Text style={styles.signInText}>Sign In</Text>
+            <Text style={styles.themeIcon}>{isDark ? '☀️' : '🌙'}</Text>
           </TouchableOpacity>
-        )}
 
-        {/* User avatar + logout — shown when logged in */}
-        {user && (
-          <TouchableOpacity
-            style={styles.avatarBtn}
-            onPress={handleLogout}
-            activeOpacity={0.7}
-          >
-            {user.photoURL ? (
-              <img
-                src={user.photoURL}
-                style={{ width: 28, height: 28, borderRadius: 14, cursor: 'pointer' }}
-                alt="avatar"
-                title="Click to sign out"
-              />
-            ) : (
-              <View style={[styles.avatarFallback, { backgroundColor: colors.green }]}>
-                <Text style={styles.avatarText}>
-                  {(user.displayName || user.email || '?')[0].toUpperCase()}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        )}
+          {/* Install button — shows on iOS always, Android/desktop when prompt available */}
+          {showInstallButton && (
+            <TouchableOpacity
+              style={[styles.installBtn, { backgroundColor: colors.green }]}
+              onPress={handleInstallPress}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.installText}>
+                {installPlatform === 'ios' ? '⊕ Install' : 'Install'}
+              </Text>
+            </TouchableOpacity>
+          )}
 
+          {/* Sign In — shown when not logged in */}
+          {!user && (
+            <TouchableOpacity
+              style={[styles.signInBtn, { backgroundColor: colors.green }]}
+              onPress={onSignIn}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.signInText}>Sign In</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Avatar + logout — shown when logged in */}
+          {user && (
+            <TouchableOpacity style={styles.avatarBtn} onPress={handleLogout} activeOpacity={0.7}>
+              {user.photoURL ? (
+                <img
+                  src={user.photoURL}
+                  style={{ width: 28, height: 28, borderRadius: 14, cursor: 'pointer' }}
+                  alt="avatar"
+                  title="Click to sign out"
+                />
+              ) : (
+                <View style={[styles.avatarFallback, { backgroundColor: colors.green }]}>
+                  <Text style={styles.avatarText}>
+                    {(user.displayName || user.email || '?')[0].toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+
+        </View>
       </View>
-    </View>
+
+      {/* iOS install instructions modal */}
+      <IOSInstallModal
+        visible={showIOSModal}
+        onClose={() => setShowIOSModal(false)}
+        colors={colors}
+      />
+    </>
   );
 }
 
@@ -148,32 +224,56 @@ const styles = StyleSheet.create({
       android: { elevation: 4 },
     }),
   },
-
-  brand:     { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cow:       { fontSize: 20 },
-  name:      { fontFamily: Fonts.displayBold, fontSize: 17, letterSpacing: -0.3 },
-
+  brand:        { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cow:          { fontSize: 20 },
+  name:         { fontFamily: Fonts.displayBold, fontSize: 17, letterSpacing: -0.3 },
   center:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, overflow: 'hidden' },
   centerArea:   { fontFamily: Fonts.mono, fontSize: 11 },
   centerDot:    { fontFamily: Fonts.mono, fontSize: 11 },
   centerCoords: { fontFamily: Fonts.mono, fontSize: 11, flexShrink: 1 },
-
-  right: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
-
-  badge:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
-  dot:        { width: 6, height: 6, borderRadius: 3 },
-  badgeLabel: { fontFamily: Fonts.mono, fontSize: 10 },
-
-  themeBtn:  { width: 30, height: 30, borderRadius: Radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  themeIcon: { fontSize: 14 },
-
-  installBtn:  { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.md },
-  installText: { fontFamily: Fonts.body, fontSize: 12, fontWeight: '700', color: '#000' },
-
-  signInBtn:  { paddingHorizontal: 14, paddingVertical: 6, borderRadius: Radius.md },
-  signInText: { fontFamily: Fonts.displayBold, fontSize: 12, color: '#07090e' },
-
+  right:        { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
+  badge:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
+  dot:          { width: 6, height: 6, borderRadius: 3 },
+  badgeLabel:   { fontFamily: Fonts.mono, fontSize: 10 },
+  themeBtn:     { width: 30, height: 30, borderRadius: Radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  themeIcon:    { fontSize: 14 },
+  installBtn:   { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.md },
+  installText:  { fontFamily: Fonts.body, fontSize: 12, fontWeight: '700', color: '#07090e' },
+  signInBtn:    { paddingHorizontal: 14, paddingVertical: 6, borderRadius: Radius.md },
+  signInText:   { fontFamily: Fonts.displayBold, fontSize: 12, color: '#07090e' },
   avatarBtn:      { marginLeft: 4 },
   avatarFallback: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   avatarText:     { fontFamily: Fonts.displayBold, fontSize: 13, color: '#07090e' },
+});
+
+const iosStyles = StyleSheet.create({
+  backdrop:   { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  sheet: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    padding: Spacing.xl,
+    paddingBottom: 40,
+    gap: 16,
+  },
+  closeBtn:    { position: 'absolute', top: 14, right: 16, padding: 6, zIndex: 10 },
+  closeText:   { fontSize: 16 },
+  title:       { fontFamily: Fonts.displayBold, fontSize: 20, textAlign: 'center' },
+  sub:         { fontFamily: Fonts.body, fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  stepBadge:   { width: 26, height: 26, borderRadius: 13, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  stepNum:     { fontFamily: Fonts.mono, fontSize: 12 },
+  stepIcon:    { fontSize: 20, flexShrink: 0 },
+  stepText:    { fontFamily: Fonts.body, fontSize: 14, flex: 1, lineHeight: 20 },
+  doneBtn:     { borderRadius: Radius.lg, padding: 15, alignItems: 'center', marginTop: 4 },
+  doneBtnText: { fontFamily: Fonts.displayBold, fontSize: 15, color: '#07090e' },
 });
