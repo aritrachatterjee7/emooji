@@ -13,6 +13,11 @@ const CLIENT_SECRET = process.env.JACKDAW_CLIENT_SECRET;
 const JACKDAW_BASE  = (process.env.JACKDAW_BASE_URL || 'https://api.jackdaw.online')
   .replace(/\/$/, '').replace(/^http:\/\//, 'https://');
 
+// JackDaw token endpoint (different from PoliRuralPlus)
+const JACKDAW_TOKEN_URL = 'https://api.jackdaw.online/o/token/';
+// Fallback to PoliRuralPlus if JackDaw token fails
+const POLIRURAL_TOKEN_URL = 'https://www.poliruralplus.eu/o/token/';
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -67,22 +72,48 @@ function httpsPostStream(urlStr, body, headers, onResponse) {
   });
 }
 
+// ── Fetch token — tries JackDaw first, falls back to PoliRuralPlus ─────────
 async function fetchAccessToken() {
   if (!CLIENT_ID || !CLIENT_SECRET) throw new Error('Missing credentials');
-  const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
+
   const formBody = new URLSearchParams({
     grant_type:    'client_credentials',
     client_id:     CLIENT_ID,
     client_secret: CLIENT_SECRET,
   }).toString();
-  const result = await httpsPost('https://www.poliruralplus.eu/o/token/', formBody, {
-    'Authorization':  authHeader,
+
+  const headers = {
     'Content-Type':   'application/x-www-form-urlencoded',
     'Content-Length': Buffer.byteLength(formBody),
     'Accept':         'application/json',
+  };
+
+  // Try JackDaw token endpoint first
+  try {
+    const result = await httpsPost(JACKDAW_TOKEN_URL, formBody, headers);
+    if (result.status >= 200 && result.status < 300) {
+      const token = JSON.parse(result.body).access_token;
+      if (token) {
+        console.log('=== Token from JackDaw OK');
+        return token;
+      }
+    }
+    console.log('=== JackDaw token failed, status:', result.status, '— trying PoliRuralPlus');
+  } catch (e) {
+    console.log('=== JackDaw token error:', e.message, '— trying PoliRuralPlus');
+  }
+
+  // Fallback to PoliRuralPlus
+  const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
+  const result2 = await httpsPost(POLIRURAL_TOKEN_URL, formBody, {
+    ...headers,
+    'Authorization': authHeader,
   });
-  if (result.status < 200 || result.status >= 300) throw new Error(`Token ${result.status}: ${result.body}`);
-  return JSON.parse(result.body).access_token;
+  if (result2.status < 200 || result2.status >= 300) {
+    throw new Error(`Token fetch failed: ${result2.status}: ${result2.body}`);
+  }
+  console.log('=== Token from PoliRuralPlus OK');
+  return JSON.parse(result2.body).access_token;
 }
 
 app.get('/api/health', (req, res) => res.json({
@@ -121,21 +152,15 @@ app.post('/api/chat', async (req, res) => {
   try {
     const token = await fetchAccessToken();
 
-    // ── Sanitize payload ───────────────────────────────────────────────
-    // If no wkt in request, explicitly set wkt: null to prevent JackDaw
-    // from reusing any server-side cached geometry from previous sessions.
-    // Also strip thread_id if not provided to force a fresh thread.
+    // Build clean payload — only include fields explicitly sent by client
     const sanitized = {
       messages: req.body.messages,
       system:   req.body.system,
     };
-
-    // Only include these if explicitly provided by the client
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
-
-    // Always include wkt — null if not provided to reset server-side context
-    sanitized.wkt = req.body.wkt || null;
+    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
+    // Never send wkt: null — omit entirely when not provided
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
@@ -147,11 +172,21 @@ app.post('/api/chat', async (req, res) => {
 
     console.log('=== /api/chat | has_wkt:', !!req.body.wkt, '| has_thread:', !!req.body.thread_id);
 
-    const result = await httpsPost(`${JACKDAW_BASE}/chat/v2/chat`, body, hdrs);
+    // Use chat_v2 endpoint as specified by JackDaw credentials email
+    const result = await httpsPost(`${JACKDAW_BASE}/chat_v2`, body, hdrs);
+    console.log('=== chat_v2 status:', result.status);
 
-    console.log('=== JackDaw status:', result.status);
-    if (result.status >= 400) console.log('=== JackDaw error:', result.body.slice(0, 300));
+    if (result.status === 404) {
+      // Fallback to chat/v2/chat if chat_v2 not available
+      const result2 = await httpsPost(`${JACKDAW_BASE}/chat/v2/chat`, body, hdrs);
+      console.log('=== chat/v2/chat status:', result2.status);
+      if (result2.status >= 400) console.log('=== error:', result2.body.slice(0, 300));
+      res.status(result2.status);
+      if (result2.headers['content-type']) res.set('Content-Type', result2.headers['content-type']);
+      return res.send(result2.body);
+    }
 
+    if (result.status >= 400) console.log('=== chat_v2 error:', result.body.slice(0, 300));
     res.status(result.status);
     if (result.headers['content-type']) res.set('Content-Type', result.headers['content-type']);
     res.send(result.body);
@@ -165,14 +200,13 @@ app.post('/api/chat/stream', async (req, res) => {
   try {
     const token = await fetchAccessToken();
 
-    // Same sanitization as /api/chat
     const sanitized = {
       messages: req.body.messages,
       system:   req.body.system,
     };
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
-    sanitized.wkt = req.body.wkt || null;
+    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
