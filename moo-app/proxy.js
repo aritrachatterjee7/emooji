@@ -161,16 +161,15 @@ app.post('/api/chat', async (req, res) => {
   try {
     const token = await fetchAccessToken();
 
-    // NEVER add dummy WKT here — this endpoint is for unauthenticated users
-    // Sending WKT causes JackDaw to call MCP tools even with "do not use tools" prompt
+    // JackDaw chat/v2/chat always requires WKT — send dummy when none provided.
+    // MCP tools are disconnected on init so no satellite tools can be called.
     const sanitized = {
       messages: req.body.messages,
+      wkt:      req.body.wkt || DUMMY_WKT,
     };
     if (req.body.system)      sanitized.system      = req.body.system;
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
-    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
-    // wkt is only included if explicitly sent by client (signed-in with polygon)
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
