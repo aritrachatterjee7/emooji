@@ -15,6 +15,13 @@ const JACKDAW_BASE  = (process.env.JACKDAW_BASE_URL || 'https://api.jackdaw.onli
 
 const POLIRURAL_TOKEN_URL = 'https://www.poliruralplus.eu/o/token/';
 
+// Dummy WKT - centre of Europe - used when no real polygon is drawn
+// Satisfies JackDaw geometry validation without affecting the response
+const DUMMY_WKT = {
+  srid: 4326,
+  wkt: 'POLYGON ((10.0 50.0, 10.1 50.0, 10.1 50.1, 10.0 50.1, 10.0 50.0))',
+};
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -118,27 +125,21 @@ app.post('/api/mcp/connect', async (req, res) => {
   }
 });
 
-// ── POST /api/chat ─────────────────────────────────────────────────────────
-// No WKT → /chat/chat  (general chat, no geometry required, no MCP tools)
-// With WKT → /chat/v2/chat (geo-aware chat with MCP tools)
+// Always use /chat/v2/chat.
+// Send dummy WKT when no real polygon — satisfies JackDaw validation.
+// System prompt tells JackDaw to answer from knowledge only when no real polygon.
 app.post('/api/chat', async (req, res) => {
   try {
     const token  = await fetchAccessToken();
     const hasWkt = !!req.body.wkt;
 
-    // Choose endpoint based on whether we have geometry
-    const endpoint = hasWkt
-      ? `${JACKDAW_BASE}/chat/v2/chat`   // authenticated + polygon → full geo tools
-      : `${JACKDAW_BASE}/chat/chat`;      // unauthenticated / no polygon → general chat
-
-    // Build clean payload
-    // /chat/chat only accepts: messages, thread_id, wkt
-    // /chat/v2/chat accepts: messages, system, thread_id, customer_id, wkt
-    const sanitized = { messages: req.body.messages };
-    if (hasWkt && req.body.system)      sanitized.system      = req.body.system;
-    if (req.body.thread_id)             sanitized.thread_id   = req.body.thread_id;
-    if (hasWkt && req.body.customer_id) sanitized.customer_id = req.body.customer_id;
-    if (req.body.wkt)                   sanitized.wkt         = req.body.wkt;
+    const sanitized = {
+      messages: req.body.messages,
+      wkt:      req.body.wkt || DUMMY_WKT,
+    };
+    if (req.body.system)      sanitized.system      = req.body.system;
+    if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
+    if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
@@ -148,9 +149,9 @@ app.post('/api/chat', async (req, res) => {
       'Accept':         'application/json',
     };
 
-    console.log(`=== /api/chat → ${hasWkt ? 'chat/v2/chat' : 'chat/chat'} | has_thread: ${!!req.body.thread_id}`);
+    console.log(`=== /api/chat | real_wkt: ${hasWkt} | thread: ${!!req.body.thread_id}`);
 
-    const result = await httpsPost(endpoint, body, hdrs);
+    const result = await httpsPost(`${JACKDAW_BASE}/chat/v2/chat`, body, hdrs);
     console.log(`=== status: ${result.status}`);
     if (result.status >= 400) console.log('=== error:', result.body.slice(0, 300));
 
@@ -162,16 +163,17 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// ── POST /api/chat/stream (SSE, authenticated + polygon only) ──────────────
 app.post('/api/chat/stream', async (req, res) => {
   try {
     const token = await fetchAccessToken();
 
-    const sanitized = { messages: req.body.messages };
+    const sanitized = {
+      messages: req.body.messages,
+      wkt:      req.body.wkt || DUMMY_WKT,
+    };
     if (req.body.system)      sanitized.system      = req.body.system;
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
-    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
@@ -205,7 +207,6 @@ app.post('/api/chat/stream', async (req, res) => {
   }
 });
 
-// ── Static files ───────────────────────────────────────────────────────────
 const PUBLIC_DIR = path.join(__dirname, 'dist');
 app.use(express.static(PUBLIC_DIR, {
   maxAge: '1h',
