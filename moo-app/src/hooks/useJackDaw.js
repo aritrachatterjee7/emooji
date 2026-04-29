@@ -10,10 +10,11 @@ const PROXY_BASE =
 const CFG = {
   jackdaw: { baseUrl: 'https://api.jackdaw.online' },
   proxy: {
-    tokenUrl:  `${PROXY_BASE}/api/token`,
-    chatUrl:   `${PROXY_BASE}/api/chat`,
-    streamUrl: `${PROXY_BASE}/api/chat/stream`,
-    mcpUrl:    `${PROXY_BASE}/api/mcp/connect`,
+    tokenUrl:      `${PROXY_BASE}/api/token`,
+    chatUrl:       `${PROXY_BASE}/api/chat`,
+    streamUrl:     `${PROXY_BASE}/api/chat/stream`,
+    mcpUrl:        `${PROXY_BASE}/api/mcp/connect`,
+    mcpDisconnect: `${PROXY_BASE}/api/mcp/all`,
   },
   mcp: {
     serverUrl: 'https://emooji.onrender.com/sse',
@@ -59,6 +60,20 @@ export function useJackDaw() {
     }
   }, []);
 
+  // ── Disconnect all MCP servers ─────────────────────────────────────────
+  // Called on init to ensure no leftover MCP tools from previous sessions.
+  // This prevents JackDaw from calling satellite tools for unauthenticated users.
+  const disconnectMCP = useCallback(async () => {
+    try {
+      await fetch(CFG.proxy.mcpDisconnect, { method: 'DELETE' });
+      mcpConnected.current = false;
+      sessionRef.current   = null;
+      console.log('MCP disconnected');
+    } catch {
+      // Non-fatal — ignore
+    }
+  }, []);
+
   // ── Register MCP tools — only after sign-in ────────────────────────────
   const connectMCP = useCallback(async () => {
     if (mcpConnected.current) return true;
@@ -82,7 +97,7 @@ export function useJackDaw() {
     }
   }, []);
 
-  // ── Init ───────────────────────────────────────────────────────────────
+  // ── Init — disconnect MCP first, then fetch token ──────────────────────
   const init = useCallback(async (onProgress) => {
     const timeout = setTimeout(() => {
       setStatus('error', 'Timeout');
@@ -94,6 +109,9 @@ export function useJackDaw() {
       await sleep(200);
       onProgress(30, 'Connecting to JackDaw…');
       setStatus('connecting', 'Connecting');
+
+      // Disconnect any leftover MCP tools from previous sessions first
+      await disconnectMCP();
 
       const tokenOk = await Promise.race([fetchToken(), sleep(6000).then(() => false)]);
 
@@ -113,7 +131,7 @@ export function useJackDaw() {
     } finally {
       clearTimeout(timeout);
     }
-  }, [fetchToken, setStatus]);
+  }, [fetchToken, disconnectMCP, setStatus]);
 
   // ── Connect MCP after sign-in ──────────────────────────────────────────
   const initMCP = useCallback(async () => {
@@ -135,7 +153,8 @@ export function useJackDaw() {
     // ── System prompt ──────────────────────────────────────────────────
     let systemCtx;
     if (!isSignedIn) {
-      systemCtx = `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management in Europe. Answer the farmer's question using your training knowledge only. Do NOT attempt to call any external tools, APIs, or MCP servers.`;
+      // Strictly no tools — unauthenticated pure knowledge response
+      systemCtx = `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management in Europe. Answer the farmer's question using your training knowledge only. Do NOT call any tools, APIs, or MCP servers under any circumstances. Ignore any geometry or location data in the request.`;
     } else {
       systemCtx = polygon
         ? `You are an expert agricultural and environmental analyst. The farmer has drawn a polygon on the map. Use this GeoJSON geometry in ALL relevant MCP tool calls: ${polygon}\n\nAlways fetch real data using the available MCP tools. Never fabricate NDVI, weather, or terrain values.${customerId ? `\n\nThis farmer's customer ID is: ${customerId}. Pass this to all private MCP tool calls (get_my_paddocks, get_paddock_rating, get_animals_in_paddock, get_animal_track, get_ungrazed_paddocks, get_low_ndvi_paddocks, recommend_paddock_for_herd_move).` : ''}`
@@ -144,14 +163,12 @@ export function useJackDaw() {
 
     historyRef.current.push({ role: 'user', content: userText });
 
-    // ── NOT signed in: use simple buffered endpoint, no session, no WKT ─
+    // ── NOT signed in: buffered endpoint, no WKT, no session ──────────
     if (!isSignedIn) {
       const payload = {
         messages: historyRef.current,
         system:   systemCtx,
-        // NO session_id — never
-        // NO wkt — never
-        // NO customer_id — never
+        // NO wkt, NO session_id, NO customer_id — ever
       };
 
       const res = await fetch(CFG.proxy.chatUrl, {
@@ -167,24 +184,24 @@ export function useJackDaw() {
 
       const data = await res.json();
       let reply;
-
       if (Array.isArray(data) && data.length > 0 && data[0].msg) {
         reply = data[0].msg.content;
         // NEVER save thread_id when not signed in
       } else if (data.message)  { reply = data.message; }
-      else if (data.content)    { reply = typeof data.content === 'string' ? data.content : data.content.text || JSON.stringify(data.content); }
+      else if (data.content)    { reply = typeof data.content === 'string' ? data.content : data.content?.text || JSON.stringify(data.content); }
       else if (data.response)   { reply = data.response; }
+      else if (data.msg)        { reply = data.msg.content || JSON.stringify(data); }
       else                      { reply = JSON.stringify(data); }
 
       historyRef.current.push({ role: 'assistant', content: reply });
       return reply;
     }
 
-    // ── Signed in: use streaming endpoint with full context ────────────
+    // ── Signed in: streaming with full MCP context ─────────────────────
     const payload = {
-      messages:   historyRef.current,
-      system:     systemCtx,
-      session_id: sessionRef.current || undefined,
+      messages:    historyRef.current,
+      system:      systemCtx,
+      session_id:  sessionRef.current || undefined,
       customer_id: customerId || undefined,
     };
 
@@ -232,12 +249,11 @@ export function useJackDaw() {
 
     const data = await res.json();
     let reply;
-
     if (Array.isArray(data) && data.length > 0 && data[0].msg) {
       reply = data[0].msg.content;
       if (data[0].thread_id) sessionRef.current = data[0].thread_id;
     } else if (data.message)  { reply = data.message; }
-    else if (data.content)    { reply = typeof data.content === 'string' ? data.content : data.content.text || JSON.stringify(data.content); }
+    else if (data.content)    { reply = typeof data.content === 'string' ? data.content : data.content?.text || JSON.stringify(data.content); }
     else if (data.response)   { reply = data.response; }
     else                      { reply = JSON.stringify(data); }
 
@@ -281,25 +297,16 @@ async function readSSEStream(body, onProgress, sessionRef) {
       } else if (line === '' && eventType && dataLine) {
         try {
           const parsed = JSON.parse(dataLine);
-
           if (eventType === 'progress' && onProgress) {
             const text = extractProgressText(parsed);
             if (text) onProgress(text);
           }
-
           if (eventType === 'final') {
             finalReply = extractFinalReply(parsed);
-            if (parsed.thread_id && sessionRef) {
-              sessionRef.current = parsed.thread_id;
-            }
+            if (parsed.thread_id && sessionRef) sessionRef.current = parsed.thread_id;
           }
-
-          if (eventType === 'error') {
-            throw new Error(parsed.message || 'Stream error');
-          }
-        } catch (e) {
-          // ignore parse errors
-        }
+          if (eventType === 'error') throw new Error(parsed.message || 'Stream error');
+        } catch (e) { /* ignore parse errors */ }
         eventType = null;
         dataLine  = null;
       }

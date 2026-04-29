@@ -15,8 +15,8 @@ const JACKDAW_BASE  = (process.env.JACKDAW_BASE_URL || 'https://api.jackdaw.onli
 
 const POLIRURAL_TOKEN_URL = 'https://www.poliruralplus.eu/o/token/';
 
-// Dummy WKT - centre of Europe - used when no real polygon is drawn
-// Satisfies JackDaw geometry validation without affecting the response
+// Dummy WKT — only used for STREAMING (signed-in) endpoint when no polygon drawn
+// Never used for buffered (unauthenticated) endpoint
 const DUMMY_WKT = {
   srid: 4326,
   wkt: 'POLYGON ((10.0 50.0, 10.1 50.0, 10.1 50.1, 10.0 50.1, 10.0 50.0))',
@@ -27,14 +27,14 @@ app.use(express.urlencoded({ extended: false }));
 
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Cross-Origin-Opener-Policy',   'same-origin-allow-popups');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
-function httpsPost(urlStr, body, headers) {
+function httpsRequest(method, urlStr, body, headers) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(urlStr);
     const lib = parsed.protocol === 'https:' ? https : http;
@@ -42,7 +42,7 @@ function httpsPost(urlStr, body, headers) {
       hostname: parsed.hostname,
       port:     parsed.port || 443,
       path:     parsed.pathname + (parsed.search || ''),
-      method:   'POST',
+      method,
       headers,
     }, incoming => {
       let data = '';
@@ -50,9 +50,17 @@ function httpsPost(urlStr, body, headers) {
       incoming.on('end', () => resolve({ status: incoming.statusCode, headers: incoming.headers, body: data }));
     });
     req.on('error', reject);
-    req.write(body);
+    if (body) req.write(body);
     req.end();
   });
+}
+
+function httpsPost(urlStr, body, headers) {
+  return httpsRequest('POST', urlStr, body, headers);
+}
+
+function httpsDelete(urlStr, headers) {
+  return httpsRequest('DELETE', urlStr, null, headers);
 }
 
 function httpsPostStream(urlStr, body, headers, onResponse) {
@@ -106,6 +114,7 @@ app.post('/api/token', async (req, res) => {
   }
 });
 
+// ── POST /api/mcp/connect ──────────────────────────────────────────────────
 app.post('/api/mcp/connect', async (req, res) => {
   try {
     const token = await fetchAccessToken();
@@ -125,21 +134,43 @@ app.post('/api/mcp/connect', async (req, res) => {
   }
 });
 
-// Always use /chat/v2/chat.
-// Send dummy WKT when no real polygon — satisfies JackDaw validation.
-// System prompt tells JackDaw to answer from knowledge only when no real polygon.
+// ── DELETE /api/mcp/all — disconnect all MCP servers ─────────────────────
+// Called on app init to ensure unauthenticated users have no MCP tools
+app.delete('/api/mcp/all', async (req, res) => {
+  try {
+    const token = await fetchAccessToken();
+    const hdrs  = {
+      'Authorization': `Bearer ${token}`,
+      'Accept':        'application/json',
+    };
+    const result = await httpsDelete(`${JACKDAW_BASE}/mcp/all`, hdrs);
+    console.log('=== MCP disconnect status:', result.status);
+    res.status(result.status);
+    if (result.headers['content-type']) res.set('Content-Type', result.headers['content-type']);
+    res.send(result.body);
+  } catch (err) {
+    console.error('=== MCP disconnect error:', err.message);
+    res.status(503).json({ error: 'mcp_disconnect_failed', details: err.message });
+  }
+});
+
+// ── POST /api/chat (buffered) ──────────────────────────────────────────────
+// Used for UNAUTHENTICATED users — no WKT, no session, no MCP tools
+// Sends only messages + system prompt to JackDaw
 app.post('/api/chat', async (req, res) => {
   try {
-    const token  = await fetchAccessToken();
-    const hasWkt = !!req.body.wkt;
+    const token = await fetchAccessToken();
 
+    // NEVER add dummy WKT here — this endpoint is for unauthenticated users
+    // Sending WKT causes JackDaw to call MCP tools even with "do not use tools" prompt
     const sanitized = {
       messages: req.body.messages,
-      wkt:      req.body.wkt || DUMMY_WKT,
     };
     if (req.body.system)      sanitized.system      = req.body.system;
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
+    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
+    // wkt is only included if explicitly sent by client (signed-in with polygon)
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
@@ -149,7 +180,7 @@ app.post('/api/chat', async (req, res) => {
       'Accept':         'application/json',
     };
 
-    console.log(`=== /api/chat | real_wkt: ${hasWkt} | thread: ${!!req.body.thread_id}`);
+    console.log(`=== /api/chat | has_wkt: ${!!req.body.wkt} | has_thread: ${!!req.body.thread_id}`);
 
     const result = await httpsPost(`${JACKDAW_BASE}/chat/v2/chat`, body, hdrs);
     console.log(`=== status: ${result.status}`);
@@ -163,13 +194,17 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// ── POST /api/chat/stream (SSE, signed-in only) ────────────────────────────
+// Used for AUTHENTICATED users with full MCP tool access
+// Adds dummy WKT only if no real polygon provided (to satisfy JackDaw validation)
 app.post('/api/chat/stream', async (req, res) => {
   try {
     const token = await fetchAccessToken();
 
     const sanitized = {
       messages: req.body.messages,
-      wkt:      req.body.wkt || DUMMY_WKT,
+      // Always include WKT for streaming — use dummy if no real polygon
+      wkt: req.body.wkt || DUMMY_WKT,
     };
     if (req.body.system)      sanitized.system      = req.body.system;
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
@@ -207,6 +242,7 @@ app.post('/api/chat/stream', async (req, res) => {
   }
 });
 
+// ── Static files ───────────────────────────────────────────────────────────
 const PUBLIC_DIR = path.join(__dirname, 'dist');
 app.use(express.static(PUBLIC_DIR, {
   maxAge: '1h',
