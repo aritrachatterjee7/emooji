@@ -132,11 +132,13 @@ app.post('/api/chat', async (req, res) => {
       : `${JACKDAW_BASE}/chat/chat`;      // unauthenticated / no polygon → general chat
 
     // Build clean payload
+    // /chat/chat only accepts: messages, thread_id, wkt
+    // /chat/v2/chat accepts: messages, system, thread_id, customer_id, wkt
     const sanitized = { messages: req.body.messages };
-    if (req.body.system)      sanitized.system      = req.body.system;
-    if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
-    if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
-    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
+    if (hasWkt && req.body.system)      sanitized.system      = req.body.system;
+    if (req.body.thread_id)             sanitized.thread_id   = req.body.thread_id;
+    if (hasWkt && req.body.customer_id) sanitized.customer_id = req.body.customer_id;
+    if (req.body.wkt)                   sanitized.wkt         = req.body.wkt;
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
