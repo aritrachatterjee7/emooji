@@ -116,63 +116,66 @@ app.post('/api/mcp/connect', async (req, res) => {
   }
 });
 
-// ── POST /api/chat ─────────────────────────────────────────────────────────
+// ── POST /api/chat (buffered) ──────────────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   try {
-    // ── DEBUG: log exactly what the frontend is sending ────────────────
-    const bodyObj = req.body;
-    console.log('=== /api/chat payload keys:', Object.keys(bodyObj));
-    console.log('=== has session_id:', !!bodyObj.session_id, '| value:', bodyObj.session_id);
-    console.log('=== has wkt:', !!bodyObj.wkt, '| value:', JSON.stringify(bodyObj.wkt));
-    console.log('=== has customer_id:', !!bodyObj.customer_id);
-    console.log('=== system prompt (first 100):', (bodyObj.system || '').slice(0, 100));
-    // ──────────────────────────────────────────────────────────────────
-
     const token = await fetchAccessToken();
-    const body  = JSON.stringify(req.body);
-    const hdrs  = {
+
+    // ── Sanitize payload ───────────────────────────────────────────────
+    // If no wkt in request, explicitly set wkt: null to prevent JackDaw
+    // from reusing any server-side cached geometry from previous sessions.
+    // Also strip thread_id if not provided to force a fresh thread.
+    const sanitized = {
+      messages: req.body.messages,
+      system:   req.body.system,
+    };
+
+    // Only include these if explicitly provided by the client
+    if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
+    if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
+
+    // Always include wkt — null if not provided to reset server-side context
+    sanitized.wkt = req.body.wkt || null;
+
+    const body = JSON.stringify(sanitized);
+    const hdrs = {
       'Authorization':  `Bearer ${token}`,
       'Content-Type':   'application/json',
       'Content-Length': Buffer.byteLength(body),
       'Accept':         'application/json',
     };
-    const endpoints = [
-      `${JACKDAW_BASE}/chat_v2`,
-      `${JACKDAW_BASE}/chat/v2/chat`,
-      `${JACKDAW_BASE}/v2/chat`,
-    ];
-    let chatRes = null;
-    for (const url of endpoints) {
-      const attempt = await httpsPost(url, body, hdrs);
-      console.log(`=== tried ${url} → status ${attempt.status}`);
-      if (attempt.status !== 404) { chatRes = attempt; break; }
-    }
-    if (!chatRes) return res.status(502).json({ error: 'chat_endpoint_not_found' });
-    console.log('=== JackDaw response status:', chatRes.status);
-    if (chatRes.status >= 400) {
-      console.log('=== JackDaw error body:', chatRes.body.slice(0, 300));
-    }
-    res.status(chatRes.status);
-    if (chatRes.headers['content-type']) res.set('Content-Type', chatRes.headers['content-type']);
-    res.send(chatRes.body);
+
+    console.log('=== /api/chat | has_wkt:', !!req.body.wkt, '| has_thread:', !!req.body.thread_id);
+
+    const result = await httpsPost(`${JACKDAW_BASE}/chat/v2/chat`, body, hdrs);
+
+    console.log('=== JackDaw status:', result.status);
+    if (result.status >= 400) console.log('=== JackDaw error:', result.body.slice(0, 300));
+
+    res.status(result.status);
+    if (result.headers['content-type']) res.set('Content-Type', result.headers['content-type']);
+    res.send(result.body);
   } catch (err) {
     res.status(503).json({ error: 'chat_api_unavailable', details: err.message });
   }
 });
 
-// ── POST /api/chat/stream ──────────────────────────────────────────────────
+// ── POST /api/chat/stream (SSE) ────────────────────────────────────────────
 app.post('/api/chat/stream', async (req, res) => {
   try {
-    // ── DEBUG ──────────────────────────────────────────────────────────
-    const bodyObj = req.body;
-    console.log('=== /api/chat/stream payload keys:', Object.keys(bodyObj));
-    console.log('=== stream has session_id:', !!bodyObj.session_id, '| value:', bodyObj.session_id);
-    console.log('=== stream has wkt:', !!bodyObj.wkt);
-    // ──────────────────────────────────────────────────────────────────
-
     const token = await fetchAccessToken();
-    const body  = JSON.stringify(req.body);
-    const hdrs  = {
+
+    // Same sanitization as /api/chat
+    const sanitized = {
+      messages: req.body.messages,
+      system:   req.body.system,
+    };
+    if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
+    if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
+    sanitized.wkt = req.body.wkt || null;
+
+    const body = JSON.stringify(sanitized);
+    const hdrs = {
       'Authorization':  `Bearer ${token}`,
       'Content-Type':   'application/json',
       'Content-Length': Buffer.byteLength(body),
