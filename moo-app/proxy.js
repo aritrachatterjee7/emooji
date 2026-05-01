@@ -4,6 +4,7 @@ const path    = require('path');
 const https   = require('https');
 const http    = require('http');
 const { URL } = require('url');
+const { Pool } = require('pg');
 
 const app  = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -15,20 +16,59 @@ const JACKDAW_BASE  = (process.env.JACKDAW_BASE_URL || 'https://api.jackdaw.onli
 
 const POLIRURAL_TOKEN_URL = 'https://www.poliruralplus.eu/o/token/';
 
-// Dummy WKT — only used for STREAMING (signed-in) endpoint when no polygon drawn
-// Never used for buffered (unauthenticated) endpoint
 const DUMMY_WKT = {
   srid: 4326,
   wkt: 'POLYGON ((10.0 50.0, 10.1 50.0, 10.1 50.1, 10.0 50.1, 10.0 50.0))',
 };
 
-app.use(express.json());
+// ── PostgreSQL connection ──────────────────────────────────────────────────
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL ||
+    'postgresql://emooji_db_user:yvEqiXeKYGME06DTCzGnMWlPEjA68Nkd@dpg-d7q63upugtpc73anvsqg-a.oregon-postgres.render.com/emooji_db',
+  ssl: { rejectUnauthorized: false },
+});
+
+// ── Init DB tables ─────────────────────────────────────────────────────────
+async function initDB() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id     TEXT NOT NULL,
+        title       TEXT NOT NULL DEFAULT 'New Chat',
+        polygon     JSONB,
+        field_stats JSONB,
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS messages (
+        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+        role       TEXT NOT NULL,
+        content    TEXT NOT NULL,
+        time       TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
+    `);
+    console.log('✅ DB tables ready');
+  } catch (err) {
+    console.error('DB init error:', err.message);
+  } finally {
+    client.release();
+  }
+}
+initDB();
+
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false }));
 
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Id');
   res.setHeader('Cross-Origin-Opener-Policy',   'same-origin-allow-popups');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -102,10 +142,12 @@ async function fetchAccessToken() {
   return JSON.parse(result.body).access_token;
 }
 
+// ── Health ─────────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({
   status: 'ok', credsSet: !!(CLIENT_ID && CLIENT_SECRET), timestamp: new Date().toISOString(),
 }));
 
+// ── Token ──────────────────────────────────────────────────────────────────
 app.post('/api/token', async (req, res) => {
   try {
     res.json({ access_token: await fetchAccessToken(), token_type: 'bearer', expires_in: 3600 });
@@ -114,7 +156,7 @@ app.post('/api/token', async (req, res) => {
   }
 });
 
-// ── POST /api/mcp/connect ──────────────────────────────────────────────────
+// ── MCP connect ────────────────────────────────────────────────────────────
 app.post('/api/mcp/connect', async (req, res) => {
   try {
     const token = await fetchAccessToken();
@@ -134,35 +176,27 @@ app.post('/api/mcp/connect', async (req, res) => {
   }
 });
 
-// ── DELETE /api/mcp/all — disconnect all MCP servers ─────────────────────
-// Called on app init to ensure unauthenticated users have no MCP tools
+// ── MCP disconnect all ─────────────────────────────────────────────────────
 app.delete('/api/mcp/all', async (req, res) => {
   try {
-    const token = await fetchAccessToken();
-    const hdrs  = {
+    const token  = await fetchAccessToken();
+    const result = await httpsDelete(`${JACKDAW_BASE}/mcp/all`, {
       'Authorization': `Bearer ${token}`,
       'Accept':        'application/json',
-    };
-    const result = await httpsDelete(`${JACKDAW_BASE}/mcp/all`, hdrs);
+    });
     console.log('=== MCP disconnect status:', result.status);
     res.status(result.status);
     if (result.headers['content-type']) res.set('Content-Type', result.headers['content-type']);
     res.send(result.body);
   } catch (err) {
-    console.error('=== MCP disconnect error:', err.message);
     res.status(503).json({ error: 'mcp_disconnect_failed', details: err.message });
   }
 });
 
-// ── POST /api/chat (buffered) ──────────────────────────────────────────────
-// Used for UNAUTHENTICATED users — no WKT, no session, no MCP tools
-// Sends only messages + system prompt to JackDaw
+// ── Chat (buffered) ────────────────────────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   try {
     const token = await fetchAccessToken();
-
-    // JackDaw chat/v2/chat always requires WKT — send dummy when none provided.
-    // MCP tools are disconnected on init so no satellite tools can be called.
     const sanitized = {
       messages: req.body.messages,
       wkt:      req.body.wkt || DUMMY_WKT,
@@ -179,12 +213,7 @@ app.post('/api/chat', async (req, res) => {
       'Accept':         'application/json',
     };
 
-    console.log(`=== /api/chat | has_wkt: ${!!req.body.wkt} | has_thread: ${!!req.body.thread_id}`);
-
     const result = await httpsPost(`${JACKDAW_BASE}/chat/v2/chat`, body, hdrs);
-    console.log(`=== status: ${result.status}`);
-    if (result.status >= 400) console.log('=== error:', result.body.slice(0, 300));
-
     res.status(result.status);
     if (result.headers['content-type']) res.set('Content-Type', result.headers['content-type']);
     res.send(result.body);
@@ -193,17 +222,13 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// ── POST /api/chat/stream (SSE, signed-in only) ────────────────────────────
-// Used for AUTHENTICATED users with full MCP tool access
-// Adds dummy WKT only if no real polygon provided (to satisfy JackDaw validation)
+// ── Chat stream (SSE) ──────────────────────────────────────────────────────
 app.post('/api/chat/stream', async (req, res) => {
   try {
     const token = await fetchAccessToken();
-
     const sanitized = {
       messages: req.body.messages,
-      // Always include WKT for streaming — use dummy if no real polygon
-      wkt: req.body.wkt || DUMMY_WKT,
+      wkt:      req.body.wkt || DUMMY_WKT,
     };
     if (req.body.system)      sanitized.system      = req.body.system;
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
@@ -222,22 +247,128 @@ app.post('/api/chat/stream', async (req, res) => {
     res.setHeader('Connection',    'keep-alive');
     res.flushHeaders();
 
-    await httpsPostStream(
-      `${JACKDAW_BASE}/chat/v2/chat/stream`,
-      body,
-      hdrs,
-      (incoming) => {
-        incoming.on('data', chunk => { res.write(chunk); });
-        incoming.on('end',  () => { res.end(); });
-        incoming.on('error', () => {
-          res.write('event: error\ndata: {"message":"Stream error"}\n\n');
-          res.end();
-        });
-      }
-    );
+    await httpsPostStream(`${JACKDAW_BASE}/chat/v2/chat/stream`, body, hdrs, (incoming) => {
+      incoming.on('data', chunk => { res.write(chunk); });
+      incoming.on('end',  () => { res.end(); });
+      incoming.on('error', () => {
+        res.write('event: error\ndata: {"message":"Stream error"}\n\n');
+        res.end();
+      });
+    });
   } catch (err) {
     res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
     res.end();
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// SESSION HISTORY API
+// All routes require X-User-Id header (Firebase UID)
+// ════════════════════════════════════════════════════════════════════════════
+
+function requireUserId(req, res, next) {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'X-User-Id header required' });
+  req.userId = userId;
+  next();
+}
+
+// ── GET /api/sessions — list user's sessions ───────────────────────────────
+app.get('/api/sessions', requireUserId, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, title, polygon, field_stats, created_at, updated_at
+       FROM sessions
+       WHERE user_id = $1
+       ORDER BY updated_at DESC
+       LIMIT 50`,
+      [req.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
+  }
+});
+
+// ── POST /api/sessions — save a new session ────────────────────────────────
+app.post('/api/sessions', requireUserId, async (req, res) => {
+  try {
+    const { title, messages, polygon, fieldStats } = req.body;
+    if (!messages || messages.length === 0) {
+      return res.status(400).json({ error: 'No messages to save' });
+    }
+
+    // Auto-generate title from first user message if not provided
+    const autoTitle = title ||
+      messages.find(m => m.role === 'user')?.content?.slice(0, 60) ||
+      'New Chat';
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const sessionRes = await client.query(
+        `INSERT INTO sessions (user_id, title, polygon, field_stats)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id`,
+        [req.userId, autoTitle, polygon ? JSON.stringify(polygon) : null, fieldStats ? JSON.stringify(fieldStats) : null]
+      );
+      const sessionId = sessionRes.rows[0].id;
+
+      // Insert all messages
+      for (const msg of messages) {
+        await client.query(
+          `INSERT INTO messages (session_id, role, content, time) VALUES ($1, $2, $3, $4)`,
+          [sessionId, msg.role, msg.content, msg.time || null]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.json({ id: sessionId, title: autoTitle });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
+  }
+});
+
+// ── GET /api/sessions/:id — load a session with messages ──────────────────
+app.get('/api/sessions/:id', requireUserId, async (req, res) => {
+  try {
+    const sessionRes = await pool.query(
+      `SELECT id, title, polygon, field_stats, created_at FROM sessions WHERE id = $1 AND user_id = $2`,
+      [req.params.id, req.userId]
+    );
+    if (sessionRes.rows.length === 0) return res.status(404).json({ error: 'Session not found' });
+
+    const messagesRes = await pool.query(
+      `SELECT role, content, time FROM messages WHERE session_id = $1 ORDER BY created_at ASC`,
+      [req.params.id]
+    );
+
+    res.json({
+      ...sessionRes.rows[0],
+      messages: messagesRes.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
+  }
+});
+
+// ── DELETE /api/sessions/:id ───────────────────────────────────────────────
+app.delete('/api/sessions/:id', requireUserId, async (req, res) => {
+  try {
+    await pool.query(
+      `DELETE FROM sessions WHERE id = $1 AND user_id = $2`,
+      [req.params.id, req.userId]
+    );
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
   }
 });
 

@@ -11,7 +11,6 @@ function StatusDot({ state, colors }) {
   return <View style={[styles.dot, { backgroundColor: color }]} />;
 }
 
-// ── Detect platform ────────────────────────────────────────────────────────
 function getInstallPlatform() {
   if (Platform.OS !== 'web') return null;
   const ua = navigator.userAgent || '';
@@ -19,13 +18,12 @@ function getInstallPlatform() {
   const isAndroid = /Android/.test(ua);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches
     || window.navigator.standalone === true;
-  if (isStandalone) return null; // already installed
+  if (isStandalone) return null;
   if (isIOS) return 'ios';
   if (isAndroid) return 'android';
   return 'desktop';
 }
 
-// ── iOS install instructions modal ────────────────────────────────────────
 function IOSInstallModal({ visible, onClose, colors }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -49,10 +47,7 @@ function IOSInstallModal({ visible, onClose, colors }) {
             <Text style={[iosStyles.stepText, { color: colors.textPrimary }]}>{text}</Text>
           </View>
         ))}
-        <TouchableOpacity
-          style={[iosStyles.doneBtn, { backgroundColor: colors.green }]}
-          onPress={onClose}
-        >
+        <TouchableOpacity style={[iosStyles.doneBtn, { backgroundColor: colors.green }]} onPress={onClose}>
           <Text style={iosStyles.doneBtnText}>Got it</Text>
         </TouchableOpacity>
       </View>
@@ -60,7 +55,7 @@ function IOSInstallModal({ visible, onClose, colors }) {
   );
 }
 
-export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignIn }) {
+export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignIn, onHistory }) {
   const insets = useSafeAreaInsets();
   const { state, label } = connStatus;
 
@@ -71,23 +66,17 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
   const [showIOSModal,    setShowIOSModal]    = useState(false);
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      setInstallPlatform(getInstallPlatform());
-    }
+    if (Platform.OS === 'web') setInstallPlatform(getInstallPlatform());
   }, []);
 
   const handleInstallPress = () => {
     if (installPlatform === 'ios') {
       setShowIOSModal(true);
     } else if (installPlatform === 'android' || installPlatform === 'desktop') {
-      // Use the native PWA install prompt if available
       if (onInstall) onInstall();
     }
   };
 
-  // Show install button if:
-  // - Native PWA prompt available (desktop/android via beforeinstallprompt)
-  // - OR on iOS (always show since iOS never fires beforeinstallprompt)
   const showInstallButton = showInstall || installPlatform === 'ios';
 
   const handleLogout = () => {
@@ -153,7 +142,18 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
             <Text style={styles.themeIcon}>{isDark ? '☀️' : '🌙'}</Text>
           </TouchableOpacity>
 
-          {/* Install button — shows on iOS always, Android/desktop when prompt available */}
+          {/* History button — only when signed in */}
+          {onHistory && (
+            <TouchableOpacity
+              style={[styles.themeBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
+              onPress={onHistory}
+              accessibilityLabel="Chat history"
+            >
+              <Text style={styles.themeIcon}>🕐</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Install button */}
           {showInstallButton && (
             <TouchableOpacity
               style={[styles.installBtn, { backgroundColor: colors.green }]}
@@ -200,7 +200,6 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
         </View>
       </View>
 
-      {/* iOS install instructions modal */}
       <IOSInstallModal
         visible={showIOSModal}
         onClose={() => setShowIOSModal(false)}
@@ -263,13 +262,7 @@ const iosStyles = StyleSheet.create({
   closeText:   { fontSize: 16 },
   title:       { fontFamily: Fonts.displayBold, fontSize: 20, textAlign: 'center' },
   sub:         { fontFamily: Fonts.body, fontSize: 13, textAlign: 'center', lineHeight: 20 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
+  row:         { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1 },
   stepBadge:   { width: 26, height: 26, borderRadius: 13, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   stepNum:     { fontFamily: Fonts.mono, fontSize: 12 },
   stepIcon:    { fontSize: 20, flexShrink: 0 },

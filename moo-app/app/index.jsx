@@ -11,11 +11,13 @@ import { MapToolbar }       from '../src/components/MapToolbar';
 import { FieldStatsBar }    from '../src/components/FieldStatsBar';
 import FieldMap             from '../src/components/FieldMap';
 import { NudgeModal }       from '../src/components/NudgeModal';
+import { HistoryDrawer }    from '../src/components/HistoryDrawer';
 import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
 import { useAuth }          from '../src/context/AuthContext';
 import { useTheme }         from '../src/context/ThemeContext';
 
 const MOBILE_BREAKPOINT = 860;
+const PROXY_BASE = '';
 
 function now() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -67,7 +69,6 @@ export default function MainScreen() {
   const isSignedIn  = !!user;
   const prevUserRef = useRef(null);
 
-  // ── Ref to FieldMap — used to clear Leaflet layers ────────────
   const fieldMapRef = useRef(null);
 
   const [splashVisible,  setSplashVisible]  = useState(true);
@@ -87,6 +88,9 @@ export default function MainScreen() {
 
   const [showNudge,    setShowNudge]    = useState(false);
   const nudgeShownRef = useRef(false);
+
+  // ── History drawer ─────────────────────────────────────────────
+  const [showHistory, setShowHistory] = useState(false);
 
   const [installPrompt,  setInstallPrompt]  = useState(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
@@ -131,17 +135,33 @@ export default function MainScreen() {
     if (isMobile) setUnreadCount(c => c + 1);
   }, [isMobile]);
 
-  // ── Clear field — clears both React state AND Leaflet map layers
   const handleFieldCleared = useCallback(() => {
     setPolygon(null);
     setFieldStats(null);
     setDrawMode(null);
-    // Clear the actual Leaflet drawn layers via ref
     fieldMapRef.current?.clearField();
   }, []);
 
   const appendMsg = (role, content) =>
     setMessages(prev => [...prev, { role, content, time: now() }]);
+
+  // ── Save current session to PostgreSQL ─────────────────────────
+  const saveSession = useCallback(async (msgs, poly, stats) => {
+    if (!isSignedIn || !user || msgs.length === 0) return;
+    try {
+      await fetch(`${PROXY_BASE}/api/sessions`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': user.uid },
+        body: JSON.stringify({
+          messages:   msgs,
+          polygon:    poly,
+          fieldStats: stats,
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to save session:', e);
+    }
+  }, [isSignedIn, user]);
 
   const doSend = useCallback(async (text) => {
     appendMsg('user', text);
@@ -169,12 +189,34 @@ export default function MainScreen() {
 
   const handleSend = useCallback((text) => { doSend(text); }, [doSend]);
 
-  const handleClearChat = useCallback(() => {
+  // ── New chat — save current session first, then reset ──────────
+  const handleClearChat = useCallback(async () => {
+    // Save current session before clearing if signed in and has messages
+    if (isSignedIn && messages.length > 0) {
+      await saveSession(messages, polygon, fieldStats);
+    }
     setMessages([]);
     setUnreadCount(0);
     nudgeShownRef.current = false;
     clearHistory();
-  }, [clearHistory]);
+  }, [isSignedIn, messages, polygon, fieldStats, saveSession, clearHistory]);
+
+  // ── Load a session from history ────────────────────────────────
+  const handleLoadSession = useCallback((session) => {
+    setMessages(session.messages || []);
+    if (session.polygon) {
+      setPolygon(session.polygon);
+    }
+    if (session.field_stats) {
+      try {
+        setFieldStats(typeof session.field_stats === 'string'
+          ? JSON.parse(session.field_stats)
+          : session.field_stats);
+      } catch {}
+    }
+    // Switch to chat panel on mobile
+    if (isMobile) setActivePanel('chat');
+  }, [isMobile]);
 
   const switchPanel = useCallback((panel) => {
     setActivePanel(panel);
@@ -203,6 +245,7 @@ export default function MainScreen() {
         showInstall={showInstallBtn}
         onInstall={handleInstall}
         onSignIn={() => setShowNudge(true)}
+        onHistory={isSignedIn ? () => setShowHistory(true) : null}
       />
 
       <View style={[styles.workspace, !isMobile && styles.workspaceDesktop]}>
@@ -262,6 +305,14 @@ export default function MainScreen() {
           unreadCount={unreadCount}
         />
       )}
+
+      {/* History drawer */}
+      <HistoryDrawer
+        visible={showHistory}
+        onClose={() => setShowHistory(false)}
+        userId={user?.uid}
+        onLoadSession={handleLoadSession}
+      />
 
       <NudgeModal
         visible={showNudge}

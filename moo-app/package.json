@@ -32,6 +32,7 @@
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "node-fetch": "^2.6.9",
+    "pg": "^8.11.3",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-leaflet": "^4.2.1",
