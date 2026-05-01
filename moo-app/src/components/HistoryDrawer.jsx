@@ -7,11 +7,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { Fonts, Radius, Spacing } from '../constants/tokens';
+import {
+  getLocalSessionList, deleteLocalSession, getLocalSession,
+  getRemoteSessions, getRemoteSession, deleteRemoteSession,
+} from '../hooks/useSessionStorage';
 
 const DRAWER_WIDTH = 300;
-const PROXY_BASE = '';
 
 function timeAgo(dateStr) {
+  if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1)   return 'just now';
@@ -28,11 +32,11 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession }) {
   const insets     = useSafeAreaInsets();
   const slideAnim  = React.useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
-  const [sessions,  setSessions]  = useState([]);
-  const [loading,   setLoading]   = useState(false);
-  const [deleting,  setDeleting]  = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [loading,  setLoading]  = useState(false);
+  const [deleting, setDeleting] = useState(null);
 
-  // ── Animate in/out ─────────────────────────────────────────────
+  // ── Animate ────────────────────────────────────────────────────
   useEffect(() => {
     Animated.spring(slideAnim, {
       toValue:         visible ? 0 : -DRAWER_WIDTH,
@@ -44,13 +48,16 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession }) {
 
   // ── Load sessions ───────────────────────────────────────────────
   const loadSessions = useCallback(async () => {
-    if (!userId) return;
     setLoading(true);
     try {
-      const res = await fetch(`${PROXY_BASE}/api/sessions`, {
-        headers: { 'X-User-Id': userId },
-      });
-      if (res.ok) setSessions(await res.json());
+      if (userId) {
+        // Signed in — load from PostgreSQL
+        const remote = await getRemoteSessions(userId);
+        setSessions(remote.map(s => ({ ...s, local: false })));
+      } else {
+        // Not signed in — load from localStorage
+        setSessions(getLocalSessionList());
+      }
     } catch (e) {
       console.error('Failed to load sessions:', e);
     } finally {
@@ -59,17 +66,19 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession }) {
   }, [userId]);
 
   useEffect(() => {
-    if (visible && userId) loadSessions();
-  }, [visible, userId]);
+    if (visible) loadSessions();
+  }, [visible, loadSessions]);
 
-  // ── Load a session ──────────────────────────────────────────────
+  // ── Load single session ─────────────────────────────────────────
   const handleLoad = useCallback(async (session) => {
     try {
-      const res = await fetch(`${PROXY_BASE}/api/sessions/${session.id}`, {
-        headers: { 'X-User-Id': userId },
-      });
-      if (res.ok) {
-        const data = await res.json();
+      let data;
+      if (session.local) {
+        data = getLocalSession(session.id);
+      } else {
+        data = await getRemoteSession(userId, session.id);
+      }
+      if (data) {
         onLoadSession(data);
         onClose();
       }
@@ -78,59 +87,72 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession }) {
     }
   }, [userId, onLoadSession, onClose]);
 
-  // ── Delete a session ────────────────────────────────────────────
-  const handleDelete = useCallback(async (e, sessionId) => {
+  // ── Delete session ──────────────────────────────────────────────
+  const handleDelete = useCallback(async (e, session) => {
     e.stopPropagation();
-    setDeleting(sessionId);
+    setDeleting(session.id);
     try {
-      await fetch(`${PROXY_BASE}/api/sessions/${sessionId}`, {
-        method:  'DELETE',
-        headers: { 'X-User-Id': userId },
-      });
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (session.local) {
+        deleteLocalSession(session.id);
+      } else {
+        await deleteRemoteSession(userId, session.id);
+      }
+      setSessions(prev => prev.filter(s => s.id !== session.id));
     } catch (e) {
-      console.error('Failed to delete session:', e);
+      console.error('Failed to delete:', e);
     } finally {
       setDeleting(null);
     }
   }, [userId]);
 
-  if (!visible && Platform.OS !== 'web') return null;
+  const getFieldStats = (session) => {
+    try {
+      if (!session.field_stats) return null;
+      const stats = typeof session.field_stats === 'string'
+        ? JSON.parse(session.field_stats)
+        : session.field_stats;
+      return stats?.areaHa;
+    } catch { return null; }
+  };
 
   return (
     <>
-      {/* Backdrop */}
       {visible && (
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-        />
+        <Pressable style={styles.backdrop} onPress={onClose} />
       )}
 
-      {/* Drawer */}
-      <Animated.View
-        style={[
-          styles.drawer,
-          {
-            transform: [{ translateX: slideAnim }],
-            backgroundColor: colors.bgSurface,
-            borderRightColor: colors.border,
-            paddingTop: insets.top || 0,
-          }
-        ]}
-      >
+      <Animated.View style={[
+        styles.drawer,
+        {
+          transform: [{ translateX: slideAnim }],
+          backgroundColor: colors.bgSurface,
+          borderRightColor: colors.border,
+          paddingTop: insets.top || 0,
+        }
+      ]}>
+
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <View>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Chat History</Text>
             <Text style={[styles.sub, { color: colors.textMuted }]}>
-              {sessions.length} saved session{sessions.length !== 1 ? 's' : ''}
+              {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+              {!userId && ' · local only'}
             </Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Text style={[styles.closeIcon, { color: colors.textMuted }]}>✕</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Sign-in prompt for unauthenticated */}
+        {!userId && (
+          <View style={[styles.signInBanner, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}>
+            <Text style={[styles.signInBannerText, { color: colors.green }]}>
+              🔒 Sign in to sync history across devices
+            </Text>
+          </View>
+        )}
 
         {/* Session list */}
         <ScrollView
@@ -141,60 +163,66 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession }) {
           {loading ? (
             <View style={styles.center}>
               <ActivityIndicator color={colors.green} />
-              <Text style={[styles.loadingText, { color: colors.textMuted }]}>Loading history…</Text>
+              <Text style={[styles.loadingText, { color: colors.textMuted }]}>Loading…</Text>
             </View>
           ) : sessions.length === 0 ? (
             <View style={styles.center}>
               <Text style={styles.emptyEmoji}>🗂️</Text>
               <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No saved chats yet</Text>
               <Text style={[styles.emptySub, { color: colors.textMuted }]}>
-                Start a new chat and it will appear here when you begin a new session.
+                Your chats save automatically when you start a new session.
               </Text>
             </View>
           ) : (
-            sessions.map(session => (
-              <TouchableOpacity
-                key={session.id}
-                style={[styles.sessionCard, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}
-                onPress={() => handleLoad(session)}
-                activeOpacity={0.75}
-              >
-                <View style={styles.sessionMain}>
-                  <Text style={[styles.sessionTitle, { color: colors.textPrimary }]} numberOfLines={2}>
-                    {session.title}
-                  </Text>
-                  <View style={styles.sessionMeta}>
-                    {session.field_stats && (
-                      <View style={[styles.fieldBadge, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}>
-                        <Text style={[styles.fieldBadgeText, { color: colors.green }]}>
-                          🌿 {JSON.parse(session.field_stats)?.areaHa || '?'} ha
-                        </Text>
-                      </View>
-                    )}
-                    <Text style={[styles.sessionTime, { color: colors.textMuted }]}>
-                      {timeAgo(session.updated_at)}
-                    </Text>
-                  </View>
-                </View>
+            sessions.map(session => {
+              const areaHa = getFieldStats(session);
+              return (
                 <TouchableOpacity
-                  onPress={(e) => handleDelete(e, session.id)}
-                  style={styles.deleteBtn}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  key={session.id}
+                  style={[styles.card, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}
+                  onPress={() => handleLoad(session)}
+                  activeOpacity={0.75}
                 >
-                  {deleting === session.id
-                    ? <ActivityIndicator size="small" color={colors.danger} />
-                    : <Text style={[styles.deleteIcon, { color: colors.textMuted }]}>🗑</Text>
-                  }
+                  <View style={styles.cardMain}>
+                    <Text style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+                      {session.title}
+                    </Text>
+                    <View style={styles.cardMeta}>
+                      {session.local && (
+                        <View style={[styles.localBadge, { backgroundColor: colors.bgOverlay, borderColor: colors.borderMid }]}>
+                          <Text style={[styles.localBadgeText, { color: colors.textMuted }]}>local</Text>
+                        </View>
+                      )}
+                      {areaHa && (
+                        <View style={[styles.fieldBadge, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}>
+                          <Text style={[styles.fieldBadgeText, { color: colors.green }]}>🌿 {areaHa} ha</Text>
+                        </View>
+                      )}
+                      <Text style={[styles.cardTime, { color: colors.textMuted }]}>
+                        {timeAgo(session.updated_at || session.created_at)}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={(e) => handleDelete(e, session)}
+                    style={styles.deleteBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    {deleting === session.id
+                      ? <ActivityIndicator size="small" color={colors.danger} />
+                      : <Text style={[styles.deleteIcon, { color: colors.textMuted }]}>🗑</Text>
+                    }
+                  </TouchableOpacity>
                 </TouchableOpacity>
-              </TouchableOpacity>
-            ))
+              );
+            })
           )}
         </ScrollView>
 
         {/* Footer */}
         <View style={[styles.footer, { borderTopColor: colors.border }]}>
           <Text style={[styles.footerText, { color: colors.textMuted }]}>
-            Sessions save automatically when you start a new chat
+            Sessions save when you start a new chat
           </Text>
         </View>
       </Animated.View>
@@ -234,11 +262,19 @@ const styles = StyleSheet.create({
   closeBtn:  { padding: 6 },
   closeIcon: { fontSize: 16 },
 
+  signInBanner: {
+    margin: Spacing.md,
+    marginBottom: 0,
+    padding: 10,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+  },
+  signInBannerText: { fontFamily: Fonts.mono, fontSize: 11, textAlign: 'center' },
+
   list:        { flex: 1 },
   listContent: { padding: Spacing.md, gap: 8 },
 
   center: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 60,
@@ -250,7 +286,7 @@ const styles = StyleSheet.create({
   emptyTitle:  { fontFamily: Fonts.displayBold, fontSize: 15, textAlign: 'center' },
   emptySub:    { fontFamily: Fonts.body, fontSize: 12, textAlign: 'center', lineHeight: 18 },
 
-  sessionCard: {
+  card: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     borderRadius: Radius.lg,
@@ -258,14 +294,16 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
-  sessionMain:  { flex: 1, gap: 6 },
-  sessionTitle: { fontFamily: Fonts.bodyMedium, fontSize: 13, lineHeight: 18 },
-  sessionMeta:  { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  fieldBadge:   { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10, borderWidth: 1 },
-  fieldBadgeText: { fontFamily: Fonts.mono, fontSize: 10 },
-  sessionTime:  { fontFamily: Fonts.mono, fontSize: 10 },
-  deleteBtn:    { padding: 4, marginTop: 2 },
-  deleteIcon:   { fontSize: 14 },
+  cardMain:      { flex: 1, gap: 6 },
+  cardTitle:     { fontFamily: Fonts.bodyMedium, fontSize: 13, lineHeight: 18 },
+  cardMeta:      { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  localBadge:    { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, borderWidth: 1 },
+  localBadgeText:{ fontFamily: Fonts.mono, fontSize: 9 },
+  fieldBadge:    { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10, borderWidth: 1 },
+  fieldBadgeText:{ fontFamily: Fonts.mono, fontSize: 10 },
+  cardTime:      { fontFamily: Fonts.mono, fontSize: 10 },
+  deleteBtn:     { padding: 4, marginTop: 2 },
+  deleteIcon:    { fontSize: 14 },
 
   footer: {
     padding: Spacing.md,

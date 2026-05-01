@@ -12,12 +12,16 @@ import { FieldStatsBar }    from '../src/components/FieldStatsBar';
 import FieldMap             from '../src/components/FieldMap';
 import { NudgeModal }       from '../src/components/NudgeModal';
 import { HistoryDrawer }    from '../src/components/HistoryDrawer';
+import {
+  saveLocalSession,
+  saveRemoteSession,
+  migrateLocalToRemote,
+} from '../src/hooks/useSessionStorage';
 import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
 import { useAuth }          from '../src/context/AuthContext';
 import { useTheme }         from '../src/context/ThemeContext';
 
 const MOBILE_BREAKPOINT = 860;
-const PROXY_BASE = '';
 
 function now() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -86,10 +90,9 @@ export default function MainScreen() {
   const [unreadCount,  setUnreadCount]  = useState(0);
   const [activePanel,  setActivePanel]  = useState('map');
 
-  const [showNudge,    setShowNudge]    = useState(false);
+  const [showNudge,   setShowNudge]   = useState(false);
   const nudgeShownRef = useRef(false);
 
-  // ── History drawer ─────────────────────────────────────────────
   const [showHistory, setShowHistory] = useState(false);
 
   const [installPrompt,  setInstallPrompt]  = useState(null);
@@ -104,13 +107,17 @@ export default function MainScreen() {
     }).finally(() => setSplashVisible(false));
   }, [init]);
 
+  // ── On sign-in: connect MCP + migrate local sessions ──────────
   useEffect(() => {
     const wasSignedOut  = !prevUserRef.current;
     const isNowSignedIn = !!user;
     prevUserRef.current = user;
+
     if (wasSignedOut && isNowSignedIn) {
       initMCP();
       setShowNudge(false);
+      // Migrate any locally saved sessions to PostgreSQL
+      migrateLocalToRemote(user.uid).catch(() => {});
     }
   }, [user, initMCP]);
 
@@ -145,21 +152,14 @@ export default function MainScreen() {
   const appendMsg = (role, content) =>
     setMessages(prev => [...prev, { role, content, time: now() }]);
 
-  // ── Save current session to PostgreSQL ─────────────────────────
+  // ── Save session ───────────────────────────────────────────────
+  // Signed in → PostgreSQL, Signed out → localStorage
   const saveSession = useCallback(async (msgs, poly, stats) => {
-    if (!isSignedIn || !user || msgs.length === 0) return;
-    try {
-      await fetch(`${PROXY_BASE}/api/sessions`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': user.uid },
-        body: JSON.stringify({
-          messages:   msgs,
-          polygon:    poly,
-          fieldStats: stats,
-        }),
-      });
-    } catch (e) {
-      console.error('Failed to save session:', e);
+    if (!msgs || msgs.length === 0) return;
+    if (isSignedIn && user) {
+      await saveRemoteSession(user.uid, msgs, poly, stats);
+    } else {
+      saveLocalSession(msgs, poly, stats);
     }
   }, [isSignedIn, user]);
 
@@ -189,32 +189,30 @@ export default function MainScreen() {
 
   const handleSend = useCallback((text) => { doSend(text); }, [doSend]);
 
-  // ── New chat — save current session first, then reset ──────────
+  // ── New chat: save current session, then reset ─────────────────
   const handleClearChat = useCallback(async () => {
-    // Save current session before clearing if signed in and has messages
-    if (isSignedIn && messages.length > 0) {
+    if (messages.length > 0) {
       await saveSession(messages, polygon, fieldStats);
     }
     setMessages([]);
     setUnreadCount(0);
     nudgeShownRef.current = false;
     clearHistory();
-  }, [isSignedIn, messages, polygon, fieldStats, saveSession, clearHistory]);
+  }, [messages, polygon, fieldStats, saveSession, clearHistory]);
 
-  // ── Load a session from history ────────────────────────────────
+  // ── Load session from history drawer ───────────────────────────
   const handleLoadSession = useCallback((session) => {
     setMessages(session.messages || []);
-    if (session.polygon) {
-      setPolygon(session.polygon);
-    }
+    if (session.polygon) setPolygon(session.polygon);
     if (session.field_stats) {
       try {
-        setFieldStats(typeof session.field_stats === 'string'
-          ? JSON.parse(session.field_stats)
-          : session.field_stats);
+        setFieldStats(
+          typeof session.field_stats === 'string'
+            ? JSON.parse(session.field_stats)
+            : session.field_stats
+        );
       } catch {}
     }
-    // Switch to chat panel on mobile
     if (isMobile) setActivePanel('chat');
   }, [isMobile]);
 
@@ -245,7 +243,7 @@ export default function MainScreen() {
         showInstall={showInstallBtn}
         onInstall={handleInstall}
         onSignIn={() => setShowNudge(true)}
-        onHistory={isSignedIn ? () => setShowHistory(true) : null}
+        onHistory={() => setShowHistory(true)}
       />
 
       <View style={[styles.workspace, !isMobile && styles.workspaceDesktop]}>
@@ -306,11 +304,11 @@ export default function MainScreen() {
         />
       )}
 
-      {/* History drawer */}
+      {/* History drawer — available for everyone */}
       <HistoryDrawer
         visible={showHistory}
         onClose={() => setShowHistory(false)}
-        userId={user?.uid}
+        userId={user?.uid || null}
         onLoadSession={handleLoadSession}
       />
 
