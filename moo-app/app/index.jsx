@@ -343,6 +343,7 @@ export default function MainScreen() {
         onClose={() => setShowHistory(false)}
         userId={user?.uid || null}
         onLoadSession={handleLoadSession}
+        onNewChat={handleClearChat}
       />
 
       <NudgeModal

@@ -27,7 +27,7 @@ function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString();
 }
 
-export function HistoryDrawer({ visible, onClose, userId, onLoadSession }) {
+export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewChat }) {
   const { colors } = useTheme();
   const insets     = useSafeAreaInsets();
   const slideAnim  = React.useRef(new Animated.Value(-DRAWER_WIDTH)).current;
@@ -144,6 +144,16 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession }) {
             <Text style={[styles.closeIcon, { color: colors.textMuted }]}>✕</Text>
           </TouchableOpacity>
         </View>
+
+        {/* New Chat button */}
+        <TouchableOpacity
+          style={[styles.newChatBtn, { backgroundColor: colors.green }]}
+          onPress={() => { onNewChat && onNewChat(); onClose(); }}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.newChatIcon}>✏️</Text>
+          <Text style={styles.newChatText}>New Chat</Text>
+        </TouchableOpacity>
 
         {/* Sign-in prompt for unauthenticated */}
         {!userId && (
@@ -305,6 +315,18 @@ const styles = StyleSheet.create({
   deleteBtn:     { padding: 4, marginTop: 2 },
   deleteIcon:    { fontSize: 14 },
 
+  newChatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    margin: Spacing.md,
+    marginBottom: 4,
+    padding: 12,
+    borderRadius: Radius.lg,
+  },
+  newChatIcon: { fontSize: 15 },
+  newChatText: { fontFamily: Fonts.displayBold, fontSize: 14, color: '#07090e' },
   footer: {
     padding: Spacing.md,
     borderTopWidth: 1,
