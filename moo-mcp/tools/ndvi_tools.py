@@ -94,58 +94,40 @@ def _search_sentinel2_scenes(
         logger.warning("No Copernicus token — STAC request may fail.")
 
     # STAC search payload
+    # Simple payload — no CQL2 filter, just bbox + datetime + collection
+    # Filter by cloud cover manually after fetching
+    # CQL2 filter caused 0 results due to property name differences
     payload = {
         "collections": ["SENTINEL-2"],
         "bbox":        [bbox[0], bbox[1], bbox[2], bbox[3]],
         "datetime":    f"{date_from}/{date_to}",
-        "limit":       5,
-        "sortby":      [{"field": "datetime", "direction": "desc"}],
-        "filter-lang": "cql2-json",
-        "filter": {
-            "op": "and",
-            "args": [
-                {
-                    "op":   "lte",
-                    "args": [{"property": "eo:cloud_cover"}, cloud_cover_max]
-                },
-                {
-                    "op":   "eq",
-                    "args": [{"property": "s2:processing_level"}, "S2MSI2A"]
-                }
-            ]
-        }
+        "limit":       20,
     }
 
     try:
         resp = httpx.post(STAC_SEARCH_URL, json=payload, headers=headers, timeout=20)
         resp.raise_for_status()
-        features = resp.json().get("features", [])
-        logger.info("STAC search returned %d scenes", len(features))
-        return features
+        all_features = resp.json().get("features", [])
+        logger.info("STAC search returned %d total scenes", len(all_features))
+
+        # Filter by cloud cover and L2A processing level manually
+        filtered = [
+            f for f in all_features
+            if f.get("properties", {}).get("eo:cloud_cover", 100) <= cloud_cover_max
+        ]
+        # Prefer L2A scenes
+        l2a = [
+            f for f in filtered
+            if "L2A" in str(f.get("properties", {}).get("s2:product_type", ""))
+            or "MSI2A" in str(f.get("properties", {}).get("s2:product_type", ""))
+            or "L2A" in str(f.get("id", ""))
+        ]
+        result = l2a[:5] if l2a else filtered[:5]
+        logger.info("STAC filtered to %d scenes (cloud<=%d)", len(result), cloud_cover_max)
+        return result
     except Exception as exc:
         logger.warning("STAC search failed: %s", exc)
-        # Fallback: try without filter (simpler query)
-        try:
-            simple_payload = {
-                "collections": ["SENTINEL-2"],
-                "bbox":        [bbox[0], bbox[1], bbox[2], bbox[3]],
-                "datetime":    f"{date_from}/{date_to}",
-                "limit":       5,
-            }
-            resp2 = httpx.post(STAC_SEARCH_URL, json=simple_payload, headers=headers, timeout=20)
-            resp2.raise_for_status()
-            features = resp2.json().get("features", [])
-            # Filter by cloud cover manually
-            filtered = [
-                f for f in features
-                if f.get("properties", {}).get("eo:cloud_cover", 100) <= cloud_cover_max
-                and "S2MSI2A" in f.get("properties", {}).get("s2:product_type", "S2MSI2A")
-            ]
-            logger.info("STAC fallback returned %d scenes", len(filtered))
-            return filtered or features[:3]
-        except Exception as exc2:
-            logger.warning("STAC fallback also failed: %s", exc2)
-            return []
+        return []
 
 
 def _extract_ndvi_from_stac(scene: dict) -> dict | None:
