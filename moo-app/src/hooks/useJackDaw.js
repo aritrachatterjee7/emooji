@@ -43,7 +43,6 @@ export function useJackDaw() {
 
   const setStatus = useCallback((state, label) => setConnStatus({ state, label }), []);
 
-  // ── Fetch JWT token ────────────────────────────────────────────────────
   const fetchToken = useCallback(async () => {
     try {
       const res = await fetch(CFG.proxy.tokenUrl, {
@@ -60,21 +59,14 @@ export function useJackDaw() {
     }
   }, []);
 
-  // ── Disconnect all MCP servers ─────────────────────────────────────────
-  // Called on init to ensure no leftover MCP tools from previous sessions.
-  // This prevents JackDaw from calling satellite tools for unauthenticated users.
   const disconnectMCP = useCallback(async () => {
     try {
       await fetch(CFG.proxy.mcpDisconnect, { method: 'DELETE' });
       mcpConnected.current = false;
       sessionRef.current   = null;
-      console.log('MCP disconnected');
-    } catch {
-      // Non-fatal — ignore
-    }
+    } catch {}
   }, []);
 
-  // ── Register MCP tools — only after sign-in ────────────────────────────
   const connectMCP = useCallback(async () => {
     if (mcpConnected.current) return true;
     try {
@@ -97,7 +89,6 @@ export function useJackDaw() {
     }
   }, []);
 
-  // ── Init — disconnect MCP first, then fetch token ──────────────────────
   const init = useCallback(async (onProgress) => {
     const timeout = setTimeout(() => {
       setStatus('error', 'Timeout');
@@ -110,7 +101,6 @@ export function useJackDaw() {
       onProgress(30, 'Connecting to JackDaw…');
       setStatus('connecting', 'Connecting');
 
-      // Disconnect any leftover MCP tools from previous sessions first
       await disconnectMCP();
 
       const tokenOk = await Promise.race([fetchToken(), sleep(6000).then(() => false)]);
@@ -133,7 +123,6 @@ export function useJackDaw() {
     }
   }, [fetchToken, disconnectMCP, setStatus]);
 
-  // ── Connect MCP after sign-in ──────────────────────────────────────────
   const initMCP = useCallback(async () => {
     if (mcpConnected.current) return;
     setStatus('connecting', 'Upgrading…');
@@ -141,7 +130,10 @@ export function useJackDaw() {
     if (ok) setStatus('online', 'Connected');
   }, [connectMCP, setStatus]);
 
-  // ── Send message ───────────────────────────────────────────────────────
+  // ── Send message — streaming for EVERYONE ─────────────────────────────
+  // Both signed-in and unauthenticated users use the stream endpoint
+  // so progress messages ("Analyzing...", "Starting tool call...") show for all.
+  // The system prompt and payload differ based on auth state.
   const sendMessage = useCallback(async (
     userText,
     polygon,
@@ -150,10 +142,8 @@ export function useJackDaw() {
     isSignedIn = false,
   ) => {
 
-    // ── System prompt ──────────────────────────────────────────────────
     let systemCtx;
     if (!isSignedIn) {
-      // Strictly no tools — unauthenticated pure knowledge response
       systemCtx = `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management in Europe. Answer the farmer's question using your training knowledge only. Do NOT call any tools, APIs, or MCP servers under any circumstances. Ignore any geometry or location data in the request.`;
     } else {
       systemCtx = polygon
@@ -163,54 +153,24 @@ export function useJackDaw() {
 
     historyRef.current.push({ role: 'user', content: userText });
 
-    // ── NOT signed in: buffered endpoint, no WKT, no session ──────────
-    if (!isSignedIn) {
-      const payload = {
-        messages: historyRef.current,
-        system:   systemCtx,
-        // NO wkt, NO session_id, NO customer_id — ever
-      };
-
-      const res = await fetch(CFG.proxy.chatUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => res.statusText);
-        throw new Error(`${res.status}: ${errText.slice(0, 300)}`);
-      }
-
-      const data = await res.json();
-      let reply;
-      if (Array.isArray(data) && data.length > 0 && data[0].msg) {
-        reply = data[0].msg.content;
-        // NEVER save thread_id when not signed in
-      } else if (data.message)  { reply = data.message; }
-      else if (data.content)    { reply = typeof data.content === 'string' ? data.content : data.content?.text || JSON.stringify(data.content); }
-      else if (data.response)   { reply = data.response; }
-      else if (data.msg)        { reply = data.msg.content || JSON.stringify(data); }
-      else                      { reply = JSON.stringify(data); }
-
-      historyRef.current.push({ role: 'assistant', content: reply });
-      return reply;
-    }
-
-    // ── Signed in: streaming with full MCP context ─────────────────────
+    // Build payload — signed-in gets session + WKT, unauthenticated gets neither
     const payload = {
-      messages:    historyRef.current,
-      system:      systemCtx,
-      session_id:  sessionRef.current || undefined,
-      customer_id: customerId || undefined,
+      messages: historyRef.current,
+      system:   systemCtx,
     };
 
-    if (polygon) {
-      const wkt = geojsonToWKT(polygon);
-      if (wkt) payload.wkt = { srid: 4326, wkt };
+    if (isSignedIn) {
+      if (sessionRef.current) payload.session_id  = sessionRef.current;
+      if (customerId)          payload.customer_id = customerId;
+      if (polygon) {
+        const wkt = geojsonToWKT(polygon);
+        if (wkt) payload.wkt = { srid: 4326, wkt };
+      }
     }
+    // Unauthenticated: no session_id, no wkt, no customer_id
+    // proxy.js will add dummy WKT to satisfy JackDaw validation
 
-    // Try streaming
+    // ── Try streaming first (works for everyone) ───────────────────────
     try {
       const res = await fetch(CFG.proxy.streamUrl, {
         method: 'POST',
@@ -219,7 +179,11 @@ export function useJackDaw() {
       });
 
       if (res.ok && res.body) {
-        const reply = await readSSEStream(res.body, onProgress, sessionRef);
+        const reply = await readSSEStream(
+          res.body,
+          onProgress,
+          isSignedIn ? sessionRef : null, // only save thread_id when signed in
+        );
         if (reply) {
           historyRef.current.push({ role: 'assistant', content: reply });
           return reply;
@@ -229,7 +193,7 @@ export function useJackDaw() {
       // Fall through to buffered
     }
 
-    // Fallback buffered
+    // ── Fallback buffered ──────────────────────────────────────────────
     const res = await fetch(CFG.proxy.chatUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -251,17 +215,17 @@ export function useJackDaw() {
     let reply;
     if (Array.isArray(data) && data.length > 0 && data[0].msg) {
       reply = data[0].msg.content;
-      if (data[0].thread_id) sessionRef.current = data[0].thread_id;
+      if (isSignedIn && data[0].thread_id) sessionRef.current = data[0].thread_id;
     } else if (data.message)  { reply = data.message; }
     else if (data.content)    { reply = typeof data.content === 'string' ? data.content : data.content?.text || JSON.stringify(data.content); }
     else if (data.response)   { reply = data.response; }
+    else if (data.msg)        { reply = data.msg.content || JSON.stringify(data); }
     else                      { reply = JSON.stringify(data); }
 
     historyRef.current.push({ role: 'assistant', content: reply });
     return reply;
   }, [setStatus]);
 
-  // ── Clear history ──────────────────────────────────────────────────────
   const clearHistory = useCallback(() => {
     historyRef.current = [];
     sessionRef.current = null;
@@ -271,7 +235,8 @@ export function useJackDaw() {
   return { connStatus, init, initMCP, sendMessage, clearHistory };
 }
 
-// ── SSE stream reader (signed-in only) ────────────────────────────────────
+// ── SSE stream reader ──────────────────────────────────────────────────────
+// sessionRef is null for unauthenticated — thread_id never saved
 async function readSSEStream(body, onProgress, sessionRef) {
   const reader   = body.getReader();
   const decoder  = new TextDecoder();
@@ -297,16 +262,25 @@ async function readSSEStream(body, onProgress, sessionRef) {
       } else if (line === '' && eventType && dataLine) {
         try {
           const parsed = JSON.parse(dataLine);
+
           if (eventType === 'progress' && onProgress) {
             const text = extractProgressText(parsed);
             if (text) onProgress(text);
           }
+
           if (eventType === 'final') {
             finalReply = extractFinalReply(parsed);
-            if (parsed.thread_id && sessionRef) sessionRef.current = parsed.thread_id;
+            // Only save thread_id when signed in (sessionRef is non-null)
+            if (sessionRef && parsed.thread_id) {
+              sessionRef.current = parsed.thread_id;
+            }
           }
-          if (eventType === 'error') throw new Error(parsed.message || 'Stream error');
+
+          if (eventType === 'error') {
+            throw new Error(parsed.message || 'Stream error');
+          }
         } catch (e) { /* ignore parse errors */ }
+
         eventType = null;
         dataLine  = null;
       }
@@ -316,18 +290,69 @@ async function readSSEStream(body, onProgress, sessionRef) {
   return finalReply;
 }
 
+// ── Extract human-readable progress text from JackDaw SSE events ──────────
+// JackDaw sends various progress event formats — handle all known ones
 function extractProgressText(data) {
+  if (!data) return null;
+
+  // Plain string
   if (typeof data === 'string') return data;
-  if (data.message)   return data.message;
-  if (data.text)      return data.text;
-  if (data.content)   return typeof data.content === 'string' ? data.content : null;
-  if (data.status)    return data.status;
-  if (data.tool)      return `Calling tool: ${data.tool}`;
-  if (data.tool_name) {
-    if (data.phase === 'start' || data.type === 'tool_start') return `Starting tool call: ${data.tool_name}`;
-    if (data.phase === 'end'   || data.type === 'tool_end')   return `Finished tool call: ${data.tool_name}`;
-    return `Tool: ${data.tool_name}`;
+
+  // Direct message/text fields
+  if (data.message && typeof data.message === 'string') return data.message;
+  if (data.text    && typeof data.text    === 'string') return data.text;
+  if (data.status  && typeof data.status  === 'string') return data.status;
+
+  // Content field (string or object)
+  if (data.content) {
+    if (typeof data.content === 'string') return data.content;
+    if (data.content.text)  return data.content.text;
   }
+
+  // Tool call events — various formats JackDaw uses
+  if (data.tool_name) {
+    const name = data.tool_name;
+    if (data.phase === 'start'  || data.type === 'tool_start'  || data.status === 'starting') return `Starting tool call: ${name}`;
+    if (data.phase === 'end'    || data.type === 'tool_end'    || data.status === 'finished') return `Finished tool call: ${name}`;
+    if (data.phase === 'error'  || data.type === 'tool_error'  || data.status === 'error')    return `Tool error: ${name}`;
+    return `Calling tool: ${name}`;
+  }
+  if (data.tool) {
+    const name = data.tool;
+    if (data.status === 'start' || data.status === 'starting') return `Starting tool call: ${name}`;
+    if (data.status === 'end'   || data.status === 'finished') return `Finished tool call: ${name}`;
+    return `Calling tool: ${name}`;
+  }
+  if (data.name && (data.type === 'tool_use' || data.type === 'tool_call')) {
+    return `Starting tool call: ${data.name}`;
+  }
+  if (data.name && data.type === 'tool_result') {
+    return `Finished tool call: ${data.name}`;
+  }
+
+  // Node/step labels from JackDaw graph execution
+  if (data.node)  return `${data.node}…`;
+  if (data.step)  return `${data.step}…`;
+  if (data.label) return data.label;
+
+  // Type-based fallback messages
+  if (data.type) {
+    const typeMap = {
+      'thinking':          'Thinking…',
+      'analyzing':         'Analyzing your question…',
+      'selecting_tools':   'Selecting relevant tools…',
+      'tool_start':        'Starting tool…',
+      'tool_end':          'Tool completed',
+      'generating':        'Generating response…',
+      'summarizing':       'Summarizing results…',
+    };
+    if (typeMap[data.type]) return typeMap[data.type];
+    // Generic type display
+    if (typeof data.type === 'string' && data.type.length < 40) {
+      return data.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + '…';
+    }
+  }
+
   return null;
 }
 

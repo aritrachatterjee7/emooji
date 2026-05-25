@@ -21,14 +21,13 @@ const DUMMY_WKT = {
   wkt: 'POLYGON ((10.0 50.0, 10.1 50.0, 10.1 50.1, 10.0 50.1, 10.0 50.0))',
 };
 
-// ── PostgreSQL connection ──────────────────────────────────────────────────
+// ── PostgreSQL ─────────────────────────────────────────────────────────────
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL ||
     'postgresql://emooji_db_user:yvEqiXeKYGME06DTCzGnMWlPEjA68Nkd@dpg-d7q63upugtpc73anvsqg-a.oregon-postgres.render.com/emooji_db',
   ssl: { rejectUnauthorized: false },
 });
 
-// ── Init DB tables ─────────────────────────────────────────────────────────
 async function initDB() {
   const client = await pool.connect();
   try {
@@ -142,12 +141,10 @@ async function fetchAccessToken() {
   return JSON.parse(result.body).access_token;
 }
 
-// ── Health ─────────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({
   status: 'ok', credsSet: !!(CLIENT_ID && CLIENT_SECRET), timestamp: new Date().toISOString(),
 }));
 
-// ── Token ──────────────────────────────────────────────────────────────────
 app.post('/api/token', async (req, res) => {
   try {
     res.json({ access_token: await fetchAccessToken(), token_type: 'bearer', expires_in: 3600 });
@@ -156,7 +153,6 @@ app.post('/api/token', async (req, res) => {
   }
 });
 
-// ── MCP connect ────────────────────────────────────────────────────────────
 app.post('/api/mcp/connect', async (req, res) => {
   try {
     const token = await fetchAccessToken();
@@ -176,7 +172,6 @@ app.post('/api/mcp/connect', async (req, res) => {
   }
 });
 
-// ── MCP disconnect all ─────────────────────────────────────────────────────
 app.delete('/api/mcp/all', async (req, res) => {
   try {
     const token  = await fetchAccessToken();
@@ -193,7 +188,6 @@ app.delete('/api/mcp/all', async (req, res) => {
   }
 });
 
-// ── Chat (buffered) ────────────────────────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   try {
     const token = await fetchAccessToken();
@@ -222,7 +216,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// ── Chat stream (SSE) ──────────────────────────────────────────────────────
+// ── Chat stream with SSE debug logging ────────────────────────────────────
 app.post('/api/chat/stream', async (req, res) => {
   try {
     const token = await fetchAccessToken();
@@ -248,8 +242,22 @@ app.post('/api/chat/stream', async (req, res) => {
     res.flushHeaders();
 
     await httpsPostStream(`${JACKDAW_BASE}/chat/v2/chat/stream`, body, hdrs, (incoming) => {
-      incoming.on('data', chunk => { res.write(chunk); });
-      incoming.on('end',  () => { res.end(); });
+      let sseBuffer = '';
+      incoming.on('data', chunk => {
+        const text = chunk.toString();
+        // ── DEBUG: log raw SSE events to identify progress format ──────
+        sseBuffer += text;
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop();
+        for (const line of lines) {
+          if (line.startsWith('event:') || line.startsWith('data:')) {
+            console.log('SSE:', line.slice(0, 200));
+          }
+        }
+        // ──────────────────────────────────────────────────────────────
+        res.write(chunk);
+      });
+      incoming.on('end', () => { res.end(); });
       incoming.on('error', () => {
         res.write('event: error\ndata: {"message":"Stream error"}\n\n');
         res.end();
@@ -261,11 +269,7 @@ app.post('/api/chat/stream', async (req, res) => {
   }
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// SESSION HISTORY API
-// All routes require X-User-Id header (Firebase UID)
-// ════════════════════════════════════════════════════════════════════════════
-
+// ── Session API ────────────────────────────────────────────────────────────
 function requireUserId(req, res, next) {
   const userId = req.headers['x-user-id'];
   if (!userId) return res.status(401).json({ error: 'X-User-Id header required' });
@@ -273,15 +277,11 @@ function requireUserId(req, res, next) {
   next();
 }
 
-// ── GET /api/sessions — list user's sessions ───────────────────────────────
 app.get('/api/sessions', requireUserId, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, title, polygon, field_stats, created_at, updated_at
-       FROM sessions
-       WHERE user_id = $1
-       ORDER BY updated_at DESC
-       LIMIT 50`,
+       FROM sessions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 50`,
       [req.userId]
     );
     res.json(result.rows);
@@ -290,39 +290,28 @@ app.get('/api/sessions', requireUserId, async (req, res) => {
   }
 });
 
-// ── POST /api/sessions — save a new session ────────────────────────────────
 app.post('/api/sessions', requireUserId, async (req, res) => {
   try {
     const { title, messages, polygon, fieldStats } = req.body;
-    if (!messages || messages.length === 0) {
-      return res.status(400).json({ error: 'No messages to save' });
-    }
+    if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
 
-    // Auto-generate title from first user message if not provided
     const autoTitle = title ||
-      messages.find(m => m.role === 'user')?.content?.slice(0, 60) ||
-      'New Chat';
+      messages.find(m => m.role === 'user')?.content?.slice(0, 60) || 'New Chat';
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-
       const sessionRes = await client.query(
-        `INSERT INTO sessions (user_id, title, polygon, field_stats)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id`,
+        `INSERT INTO sessions (user_id, title, polygon, field_stats) VALUES ($1, $2, $3, $4) RETURNING id`,
         [req.userId, autoTitle, polygon ? JSON.stringify(polygon) : null, fieldStats ? JSON.stringify(fieldStats) : null]
       );
       const sessionId = sessionRes.rows[0].id;
-
-      // Insert all messages
       for (const msg of messages) {
         await client.query(
           `INSERT INTO messages (session_id, role, content, time) VALUES ($1, $2, $3, $4)`,
           [sessionId, msg.role, msg.content, msg.time || null]
         );
       }
-
       await client.query('COMMIT');
       res.json({ id: sessionId, title: autoTitle });
     } catch (err) {
@@ -336,43 +325,64 @@ app.post('/api/sessions', requireUserId, async (req, res) => {
   }
 });
 
-// ── GET /api/sessions/:id — load a session with messages ──────────────────
-app.get('/api/sessions/:id', requireUserId, async (req, res) => {
+app.put('/api/sessions/:id', requireUserId, async (req, res) => {
   try {
-    const sessionRes = await pool.query(
-      `SELECT id, title, polygon, field_stats, created_at FROM sessions WHERE id = $1 AND user_id = $2`,
-      [req.params.id, req.userId]
-    );
-    if (sessionRes.rows.length === 0) return res.status(404).json({ error: 'Session not found' });
-
-    const messagesRes = await pool.query(
-      `SELECT role, content, time FROM messages WHERE session_id = $1 ORDER BY created_at ASC`,
-      [req.params.id]
-    );
-
-    res.json({
-      ...sessionRes.rows[0],
-      messages: messagesRes.rows,
-    });
+    const { messages, polygon, fieldStats } = req.body;
+    if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE sessions SET polygon=$1, field_stats=$2, updated_at=NOW() WHERE id=$3 AND user_id=$4`,
+        [polygon ? JSON.stringify(polygon) : null, fieldStats ? JSON.stringify(fieldStats) : null, req.params.id, req.userId]
+      );
+      await client.query(`DELETE FROM messages WHERE session_id=$1`, [req.params.id]);
+      for (const msg of messages) {
+        await client.query(
+          `INSERT INTO messages (session_id, role, content, time) VALUES ($1, $2, $3, $4)`,
+          [req.params.id, msg.role, msg.content, msg.time || null]
+        );
+      }
+      await client.query('COMMIT');
+      res.json({ id: req.params.id });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     res.status(500).json({ error: 'db_error', details: err.message });
   }
 });
 
-// ── DELETE /api/sessions/:id ───────────────────────────────────────────────
-app.delete('/api/sessions/:id', requireUserId, async (req, res) => {
+app.get('/api/sessions/:id', requireUserId, async (req, res) => {
   try {
-    await pool.query(
-      `DELETE FROM sessions WHERE id = $1 AND user_id = $2`,
+    const sessionRes = await pool.query(
+      `SELECT id, title, polygon, field_stats, created_at FROM sessions WHERE id=$1 AND user_id=$2`,
       [req.params.id, req.userId]
     );
+    if (sessionRes.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const messagesRes = await pool.query(
+      `SELECT role, content, time FROM messages WHERE session_id=$1 ORDER BY created_at ASC`,
+      [req.params.id]
+    );
+    res.json({ ...sessionRes.rows[0], messages: messagesRes.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
+  }
+});
+
+app.delete('/api/sessions/:id', requireUserId, async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM sessions WHERE id=$1 AND user_id=$2`, [req.params.id, req.userId]);
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: 'db_error', details: err.message });
   }
 });
 
-// ── Static files ───────────────────────────────────────────────────────────
+// ── Static ─────────────────────────────────────────────────────────────────
 const PUBLIC_DIR = path.join(__dirname, 'dist');
 app.use(express.static(PUBLIC_DIR, {
   maxAge: '1h',
@@ -382,9 +392,7 @@ app.use(express.static(PUBLIC_DIR, {
 }));
 
 app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/')) {
-    return res.status(404).json({ error: 'api_route_not_found', path: req.path });
-  }
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'not_found' });
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
