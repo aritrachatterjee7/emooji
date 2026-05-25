@@ -13,8 +13,8 @@ import FieldMap             from '../src/components/FieldMap';
 import { NudgeModal }       from '../src/components/NudgeModal';
 import { HistoryDrawer }    from '../src/components/HistoryDrawer';
 import {
-  saveLocalSession,
-  saveRemoteSession,
+  upsertLocalSession,
+  upsertRemoteSession,
   migrateLocalToRemote,
 } from '../src/hooks/useSessionStorage';
 import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
@@ -73,7 +73,9 @@ export default function MainScreen() {
   const isSignedIn  = !!user;
   const prevUserRef = useRef(null);
 
-  const fieldMapRef = useRef(null);
+  const fieldMapRef   = useRef(null);
+  // Track current session ID so we upsert instead of creating duplicates
+  const sessionIdRef  = useRef(null);
 
   const [splashVisible,  setSplashVisible]  = useState(true);
   const [splashProgress, setSplashProgress] = useState(0);
@@ -90,13 +92,22 @@ export default function MainScreen() {
   const [unreadCount,  setUnreadCount]  = useState(0);
   const [activePanel,  setActivePanel]  = useState('map');
 
-  const [showNudge,   setShowNudge]   = useState(false);
+  const [showNudge,    setShowNudge]    = useState(false);
   const nudgeShownRef = useRef(false);
 
   const [showHistory, setShowHistory] = useState(false);
 
   const [installPrompt,  setInstallPrompt]  = useState(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
+
+  // Keep a ref of messages so we can access latest in callbacks
+  const messagesRef  = useRef([]);
+  const polygonRef   = useRef(null);
+  const fieldStatsRef = useRef(null);
+
+  useEffect(() => { messagesRef.current = messages; },   [messages]);
+  useEffect(() => { polygonRef.current = polygon; },     [polygon]);
+  useEffect(() => { fieldStatsRef.current = fieldStats; }, [fieldStats]);
 
   const { connStatus, init, initMCP, sendMessage, clearHistory } = useJackDaw();
 
@@ -107,17 +118,24 @@ export default function MainScreen() {
     }).finally(() => setSplashVisible(false));
   }, [init]);
 
-  // ── On sign-in: connect MCP + migrate local sessions ──────────
+  // ── Auth state changes ─────────────────────────────────────────
   useEffect(() => {
-    const wasSignedOut  = !prevUserRef.current;
-    const isNowSignedIn = !!user;
-    prevUserRef.current = user;
+    const wasSignedIn    = !!prevUserRef.current;
+    const wasSignedOut   = !prevUserRef.current;
+    const isNowSignedIn  = !!user;
+    const isNowSignedOut = !user;
+    prevUserRef.current  = user;
 
     if (wasSignedOut && isNowSignedIn) {
+      // Signed in — connect MCP tools + migrate local sessions
       initMCP();
       setShowNudge(false);
-      // Migrate any locally saved sessions to PostgreSQL
       migrateLocalToRemote(user.uid).catch(() => {});
+    }
+
+    if (wasSignedIn && isNowSignedOut) {
+      // Signed out — disconnect ALL MCP tools so JackDaw returns raw responses
+      fetch('/api/mcp/all', { method: 'DELETE' }).catch(() => {});
     }
   }, [user, initMCP]);
 
@@ -149,31 +167,47 @@ export default function MainScreen() {
     fieldMapRef.current?.clearField();
   }, []);
 
-  const appendMsg = (role, content) =>
-    setMessages(prev => [...prev, { role, content, time: now() }]);
-
-  // ── Save session ───────────────────────────────────────────────
-  // Signed in → PostgreSQL, Signed out → localStorage
-  const saveSession = useCallback(async (msgs, poly, stats) => {
-    if (!msgs || msgs.length === 0) return;
+  // ── Auto-save session after every message exchange ─────────────
+  // Uses upsert so the same session gets updated, not duplicated.
+  const autoSave = useCallback(async (newMessages, poly, stats) => {
+    if (!newMessages || newMessages.length === 0) return;
     if (isSignedIn && user) {
-      await saveRemoteSession(user.uid, msgs, poly, stats);
+      const id = await upsertRemoteSession(
+        user.uid, newMessages, poly, stats, sessionIdRef.current
+      );
+      if (id) sessionIdRef.current = id;
     } else {
-      saveLocalSession(msgs, poly, stats);
+      const id = upsertLocalSession(
+        newMessages, poly, stats, sessionIdRef.current
+      );
+      if (id) sessionIdRef.current = id;
     }
   }, [isSignedIn, user]);
 
+  const appendMsg = useCallback((role, content) => {
+    setMessages(prev => [...prev, { role, content, time: now() }]);
+  }, []);
+
   const doSend = useCallback(async (text) => {
-    appendMsg('user', text);
+    const userMsg = { role: 'user', content: text, time: now() };
+    setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setStreamStatus('Thinking…');
     try {
       const reply = await sendMessage(
-        text, polygon, customerId,
+        text,
+        polygonRef.current,
+        customerId,
         (status) => setStreamStatus(status),
         isSignedIn,
       );
-      appendMsg('assistant', reply);
+      const assistantMsg = { role: 'assistant', content: reply, time: now() };
+      setMessages(prev => {
+        const updated = [...prev, assistantMsg];
+        // Auto-save after every complete exchange
+        autoSave(updated, polygonRef.current, fieldStatsRef.current);
+        return updated;
+      });
       if (isMobile && activePanel === 'map') setUnreadCount(c => c + 1);
       if (!isSignedIn && !nudgeShownRef.current) {
         nudgeShownRef.current = true;
@@ -185,23 +219,23 @@ export default function MainScreen() {
       setIsLoading(false);
       setStreamStatus('');
     }
-  }, [sendMessage, polygon, customerId, isSignedIn, isMobile, activePanel]);
+  }, [sendMessage, customerId, isSignedIn, isMobile, activePanel, autoSave, appendMsg]);
 
   const handleSend = useCallback((text) => { doSend(text); }, [doSend]);
 
-  // ── New chat: save current session, then reset ─────────────────
-  const handleClearChat = useCallback(async () => {
-    if (messages.length > 0) {
-      await saveSession(messages, polygon, fieldStats);
-    }
+  // ── New chat: reset session ID and clear ───────────────────────
+  const handleClearChat = useCallback(() => {
+    sessionIdRef.current = null; // force new session next time
     setMessages([]);
     setUnreadCount(0);
     nudgeShownRef.current = false;
     clearHistory();
-  }, [messages, polygon, fieldStats, saveSession, clearHistory]);
+  }, [clearHistory]);
 
-  // ── Load session from history drawer ───────────────────────────
+  // ── Load session from history ───────────────────────────────────
   const handleLoadSession = useCallback((session) => {
+    // Set session ID so future messages update this session
+    sessionIdRef.current = session.local ? null : session.id;
     setMessages(session.messages || []);
     if (session.polygon) setPolygon(session.polygon);
     if (session.field_stats) {
@@ -304,7 +338,6 @@ export default function MainScreen() {
         />
       )}
 
-      {/* History drawer — available for everyone */}
       <HistoryDrawer
         visible={showHistory}
         onClose={() => setShowHistory(false)}
