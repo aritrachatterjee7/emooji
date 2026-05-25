@@ -149,3 +149,49 @@ export async function migrateLocalToRemote(userId) {
   saveLocalSessions([]);
   console.log(`Migrated ${locals.length} local sessions to PostgreSQL`);
 }
+
+// ── Upsert remote session (create or update) ───────────────────────────────
+// Returns the session ID. Pass existingId to update, omit to create new.
+export async function upsertRemoteSession(userId, messages, polygon, fieldStats, existingId = null) {
+  if (!userId || !messages || messages.length === 0) return null;
+  try {
+    if (existingId) {
+      // Update existing session
+      const res = await fetch(`${PROXY_BASE}/api/sessions/${existingId}`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+        body: JSON.stringify({ messages, polygon: polygon || null, fieldStats: fieldStats || null }),
+      });
+      if (res.ok) return existingId;
+    }
+    // Create new session
+    return await saveRemoteSession(userId, messages, polygon, fieldStats);
+  } catch (e) {
+    console.error('Upsert failed:', e);
+    return null;
+  }
+}
+
+// ── Upsert local session (create or update) ────────────────────────────────
+export function upsertLocalSession(messages, polygon, fieldStats, existingId = null) {
+  if (!messages || messages.length === 0) return null;
+  const sessions = getLocalSessions();
+
+  if (existingId) {
+    const idx = sessions.findIndex(s => s.id === existingId);
+    if (idx !== -1) {
+      sessions[idx] = {
+        ...sessions[idx],
+        messages,
+        polygon:     polygon || null,
+        field_stats: fieldStats || null,
+        updated_at:  new Date().toISOString(),
+      };
+      saveLocalSessions(sessions);
+      return existingId;
+    }
+  }
+
+  // Create new
+  return saveLocalSession(messages, polygon, fieldStats);
+}
