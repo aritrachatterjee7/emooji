@@ -242,19 +242,7 @@ app.post('/api/chat/stream', async (req, res) => {
     res.flushHeaders();
 
     await httpsPostStream(`${JACKDAW_BASE}/chat/v2/chat/stream`, body, hdrs, (incoming) => {
-      let sseBuffer = '';
       incoming.on('data', chunk => {
-        const text = chunk.toString();
-        // ── DEBUG: log raw SSE events to identify progress format ──────
-        sseBuffer += text;
-        const lines = sseBuffer.split('\n');
-        sseBuffer = lines.pop();
-        for (const line of lines) {
-          if (line.startsWith('event:') || line.startsWith('data:')) {
-            console.log('SSE:', line.slice(0, 200));
-          }
-        }
-        // ──────────────────────────────────────────────────────────────
         res.write(chunk);
       });
       incoming.on('end', () => { res.end(); });
