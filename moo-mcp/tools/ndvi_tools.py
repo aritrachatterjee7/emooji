@@ -98,7 +98,7 @@ def _search_sentinel2_scenes(
     # Filter by cloud cover manually after fetching
     # CQL2 filter caused 0 results due to property name differences
     payload = {
-        "collections": ["SENTINEL-2"],
+        "collections": ["sentinel-2-l2a"],
         "bbox":        [bbox[0], bbox[1], bbox[2], bbox[3]],
         "datetime":    f"{date_from}/{date_to}",
         "limit":       20,
