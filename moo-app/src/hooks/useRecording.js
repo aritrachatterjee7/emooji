@@ -36,6 +36,133 @@ export function deleteRecording(sessionId) {
   saveStoredRecordings(recordings);
 }
 
+// ── Export recording as self-contained HTML file ───────────────────────────
+export function exportRecordingAsHTML(sessionId, sessionTitle) {
+  const recording = getStoredRecordings().find(r => r.sessionId === sessionId);
+  if (!recording || !recording.clips || recording.clips.length === 0) {
+    alert('No recording found for this session.');
+    return;
+  }
+
+  // Merge all clips into one flat events array with gaps between clips
+  const allEvents = [];
+  let timeOffset = 0;
+
+  recording.clips.forEach((clip, clipIdx) => {
+    if (!clip.events || clip.events.length === 0) return;
+
+    const firstTs = clip.events[0].timestamp;
+    const lastTs  = clip.events[clip.events.length - 1].timestamp;
+    const clipDuration = lastTs - firstTs;
+
+    clip.events.forEach(event => {
+      allEvents.push({
+        ...event,
+        timestamp: timeOffset + (event.timestamp - firstTs),
+      });
+    });
+
+    // Add 1 second gap between clips
+    timeOffset += clipDuration + 1000;
+  });
+
+  const eventsJson  = JSON.stringify(allEvents);
+  const clipsInfo   = recording.clips.map((c, i) =>
+    `<li><strong>Clip ${i + 1}:</strong> ${c.question || 'Question ' + (i+1)} — ${c.events?.length || 0} events</li>`
+  ).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>eMooJI Session Replay — ${sessionTitle || 'Session'}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/rrweb-player@latest/dist/style.css"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #07090e; color: #e2e8f0; font-family: system-ui, sans-serif; }
+    .header {
+      background: #0f1a2e;
+      border-bottom: 1px solid #1e3a5f;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header-brand { font-size: 20px; font-weight: 700; }
+    .header-brand span { color: #0bdb6e; }
+    .header-meta { flex: 1; }
+    .header-title { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+    .header-sub { font-size: 11px; color: #64748b; margin-top: 2px; font-family: monospace; }
+    .clips-info {
+      background: #0f1a2e;
+      border-bottom: 1px solid #1e3a5f;
+      padding: 12px 24px;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .clips-info ul { list-style: none; display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+    .clips-info li { color: #94a3b8; }
+    .clips-info li strong { color: #0bdb6e; }
+    #player { width: 100%; height: calc(100vh - 120px); }
+    .rr-player { width: 100% !important; }
+    .rr-player__frame { width: 100% !important; }
+    .error { padding: 40px; text-align: center; color: #ef4444; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-brand">eMoo<span>JI</span></div>
+    <div class="header-meta">
+      <div class="header-title">${sessionTitle || 'Session Replay'}</div>
+      <div class="header-sub">Recorded: ${recording.recordedAt ? new Date(recording.recordedAt).toLocaleString() : 'Unknown'} · ${recording.totalClips} clip${recording.totalClips !== 1 ? 's' : ''}</div>
+    </div>
+  </div>
+  <div class="clips-info">
+    <div style="font-size:11px;color:#475569;margin-bottom:4px">CLIPS IN THIS SESSION</div>
+    <ul>${clipsInfo}</ul>
+  </div>
+  <div id="player"></div>
+  <script src="https://cdn.jsdelivr.net/npm/rrweb-player@latest/dist/index.js"></script>
+  <script>
+    const events = ${eventsJson};
+    if (!events || events.length === 0) {
+      document.getElementById('player').innerHTML = '<div class="error">No events recorded in this session.</div>';
+    } else {
+      try {
+        new rrwebPlayer({
+          target: document.getElementById('player'),
+          props: {
+            events,
+            autoPlay: false,
+            showController: true,
+            width: window.innerWidth,
+            height: window.innerHeight - 120,
+            skipInactive: true,
+            speed: 1,
+            speedOption: [1, 2, 4, 8],
+          }
+        });
+      } catch(e) {
+        document.getElementById('player').innerHTML = '<div class="error">Replay error: ' + e.message + '</div>';
+      }
+    }
+  </script>
+</body>
+</html>`;
+
+  // Trigger download
+  const blob     = new Blob([html], { type: 'text/html' });
+  const url      = URL.createObjectURL(blob);
+  const a        = document.createElement('a');
+  a.href         = url;
+  a.download     = `emooji-session-${sessionTitle?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || sessionId}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export function useRecording() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [isRecording,     setIsRecording]     = useState(false);

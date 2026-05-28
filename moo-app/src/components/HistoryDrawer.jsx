@@ -11,7 +11,7 @@ import {
   getLocalSessionList, deleteLocalSession, getLocalSession,
   getRemoteSessions, getRemoteSession, deleteRemoteSession,
 } from '../hooks/useSessionStorage';
-import { getRecording } from '../hooks/useRecording';
+import { getRecording, exportRecordingAsHTML } from '../hooks/useRecording';
 import { ReplayModal }  from './ReplayModal';
 
 const DRAWER_WIDTH = 300;
@@ -217,15 +217,24 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
                     </View>
                   </View>
                   <View style={styles.cardActions}>
-                    {/* Replay button — only if recording exists */}
+                    {/* Replay + Download buttons — only if recording exists */}
                     {getRecording(session.id) && (
-                      <TouchableOpacity
-                        onPress={() => setReplaySession({ id: session.id, title: session.title })}
-                        style={styles.replayBtn}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Text style={styles.replayIcon}>▶️</Text>
-                      </TouchableOpacity>
+                      <>
+                        <TouchableOpacity
+                          onPress={() => setReplaySession({ id: session.id, title: session.title })}
+                          style={styles.replayBtn}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.replayIcon}>▶️</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => exportRecordingAsHTML(session.id, session.title)}
+                          style={styles.replayBtn}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.replayIcon}>⬇️</Text>
+                        </TouchableOpacity>
+                      </>
                     )}
                     <TouchableOpacity
                       onPress={(e) => handleDelete(e, session)}

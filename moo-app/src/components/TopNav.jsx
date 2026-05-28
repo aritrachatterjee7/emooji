@@ -55,7 +55,7 @@ function IOSInstallModal({ visible, onClose, colors }) {
   );
 }
 
-export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignIn, onHistory }) {
+export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignIn, onHistory, onRecordings }) {
   const insets = useSafeAreaInsets();
   const { state, label } = connStatus;
 
@@ -150,6 +150,17 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
               accessibilityLabel="Chat history"
             >
               <Text style={styles.themeIcon}>🕐</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Recordings button — visible to everyone */}
+          {onRecordings && (
+            <TouchableOpacity
+              style={[styles.themeBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
+              onPress={onRecordings}
+              accessibilityLabel="My recordings"
+            >
+              <Text style={styles.themeIcon}>🎬</Text>
             </TouchableOpacity>
           )}
 

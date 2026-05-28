@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { Fonts, Radius, Spacing } from '../constants/tokens';
-import { getRecording } from '../hooks/useRecording';
+import { getRecording, exportRecordingAsHTML } from '../hooks/useRecording';
 
 export function ReplayModal({ visible, onClose, sessionId, sessionTitle }) {
   const { colors }     = useTheme();
@@ -113,6 +113,13 @@ export function ReplayModal({ visible, onClose, sessionId, sessionTitle }) {
               </Text>
             )}
           </View>
+          {/* Download button */}
+          <TouchableOpacity
+            style={[styles.downloadBtn, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}
+            onPress={() => exportRecordingAsHTML(sessionId, sessionTitle)}
+          >
+            <Text style={[styles.downloadText, { color: colors.green }]}>⬇️ Download</Text>
+          </TouchableOpacity>
         </View>
 
         {loading ? (
@@ -205,6 +212,8 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 50 : 12,
   },
   backBtn:      { padding: 4 },
+  downloadBtn:  { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.md, borderWidth: 1 },
+  downloadText: { fontFamily: Fonts.mono, fontSize: 11 },
   backIcon:     { fontSize: 22 },
   headerCenter: { flex: 1 },
   headerTitle:  { fontFamily: Fonts.displayBold, fontSize: 16 },

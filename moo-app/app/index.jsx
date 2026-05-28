@@ -11,7 +11,8 @@ import { MapToolbar }       from '../src/components/MapToolbar';
 import { FieldStatsBar }    from '../src/components/FieldStatsBar';
 import FieldMap             from '../src/components/FieldMap';
 import { NudgeModal }       from '../src/components/NudgeModal';
-import { HistoryDrawer }    from '../src/components/HistoryDrawer';
+import { HistoryDrawer }       from '../src/components/HistoryDrawer';
+import { RecordingsDrawer }    from '../src/components/RecordingsDrawer';
 import {
   upsertLocalSession,
   upsertRemoteSession,
@@ -96,7 +97,8 @@ export default function MainScreen() {
   const [showNudge,    setShowNudge]    = useState(false);
   const nudgeShownRef = useRef(false);
 
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory,    setShowHistory]    = useState(false);
+  const [showRecordings, setShowRecordings] = useState(false);
 
   const [installPrompt,  setInstallPrompt]  = useState(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
@@ -313,6 +315,7 @@ export default function MainScreen() {
         onInstall={handleInstall}
         onSignIn={() => setShowNudge(true)}
         onHistory={() => setShowHistory(true)}
+        onRecordings={() => setShowRecordings(true)}
       />
 
       <View style={[styles.workspace, !isMobile && styles.workspaceDesktop]}>
