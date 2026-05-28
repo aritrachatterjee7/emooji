@@ -49,8 +49,6 @@ function BubbleContent({ content, colors }) {
   );
 }
 
-// ── Live status indicator — replaces three dots ────────────────────────────
-// Shows streaming progress from JackDaw: "Analyzing...", "Starting tool call: get_ndvi_for_area" etc.
 function ThinkingIndicator({ statusText, colors }) {
   return (
     <View style={styles.msgRow}>
@@ -59,7 +57,6 @@ function ThinkingIndicator({ statusText, colors }) {
       </View>
       <View style={[styles.bubble, { backgroundColor: colors.bubbleAsst, borderColor: colors.border, borderBottomLeftRadius: 4, maxWidth: '88%' }]}>
         <View style={styles.thinkingRow}>
-          {/* Animated pulse dot */}
           <View style={[styles.pulseDot, { backgroundColor: colors.green }]} />
           <Text style={[styles.thinkingText, { color: colors.textSecondary }]}>
             {statusText || 'Thinking…'}
@@ -125,7 +122,22 @@ function WelcomeMessage({ colors }) {
   );
 }
 
-export function ChatPanel({ messages, isLoading, streamStatus, onSend, onClearChat }) {
+// ── Recording status bar ───────────────────────────────────────────────────
+function RecordingBar({ isRecording, colors }) {
+  return (
+    <View style={[styles.recordingBar, { backgroundColor: isRecording ? 'rgba(220,38,38,0.12)' : 'rgba(11,219,110,0.08)', borderColor: isRecording ? 'rgba(220,38,38,0.3)' : colors.greenBorder }]}>
+      <View style={[styles.recordingDot, { backgroundColor: isRecording ? '#dc2626' : colors.green }]} />
+      <Text style={[styles.recordingText, { color: isRecording ? '#dc2626' : colors.green }]}>
+        {isRecording ? 'Recording…' : 'Session active — recording paused'}
+      </Text>
+    </View>
+  );
+}
+
+export function ChatPanel({
+  messages, isLoading, streamStatus, onSend, onClearChat,
+  isSessionActive, isRecording, onStartSession, onEndSession,
+}) {
   const { colors } = useTheme();
   const [text, setText] = useState('');
   const scrollRef = useRef(null);
@@ -150,16 +162,45 @@ export function ChatPanel({ messages, isLoading, streamStatus, onSend, onClearCh
 
   const inner = (
     <>
+      {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.bgElevated, borderBottomColor: colors.border }]}>
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>Field Analysis</Text>
-          <TouchableOpacity onPress={onClearChat} style={styles.clearBtn} activeOpacity={0.7}>
-            <Text style={[styles.clearBtnText, { color: colors.textMuted }]}>✕</Text>
-          </TouchableOpacity>
+          <View style={styles.headerBtns}>
+            {/* Start / End Session button */}
+            {!isSessionActive ? (
+              <TouchableOpacity
+                style={[styles.sessionBtn, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}
+                onPress={onStartSession}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.sessionBtnIcon]}>⏺</Text>
+                <Text style={[styles.sessionBtnText, { color: colors.green }]}>Start Session</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.sessionBtn, { backgroundColor: 'rgba(220,38,38,0.1)', borderColor: 'rgba(220,38,38,0.3)' }]}
+                onPress={onEndSession}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.sessionBtnIcon}>⏹</Text>
+                <Text style={[styles.sessionBtnText, { color: '#dc2626' }]}>End Session</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={onClearChat} style={styles.clearBtn} activeOpacity={0.7}>
+              <Text style={[styles.clearBtnText, { color: colors.textMuted }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={[styles.sub, { color: colors.textMuted }]}>Draw any field · Ask in plain language · Real satellite data</Text>
       </View>
 
+      {/* Recording status bar — shown when session is active */}
+      {isSessionActive && (
+        <RecordingBar isRecording={isRecording} colors={colors} />
+      )}
+
+      {/* Messages */}
       <ScrollView
         ref={scrollRef}
         style={[styles.feed, { backgroundColor: colors.bgSurface }]}
@@ -170,11 +211,11 @@ export function ChatPanel({ messages, isLoading, streamStatus, onSend, onClearCh
       >
         <WelcomeMessage colors={colors} />
         {messages.map((m, i) => <ChatMessage key={i} item={m} colors={colors} />)}
-        {/* Show live streaming status instead of three dots */}
         {isLoading && <ThinkingIndicator statusText={streamStatus} colors={colors} />}
         <View style={{ height: 12 }} />
       </ScrollView>
 
+      {/* Input */}
       <View style={[styles.inputArea, { borderTopColor: colors.border, backgroundColor: colors.bgSurface }]}>
         <View style={[styles.inputRow, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}>
           <TextInput
@@ -223,10 +264,42 @@ const styles = StyleSheet.create({
   },
   header:       { flexShrink: 0, padding: Spacing.md, paddingBottom: 9, borderBottomWidth: 1 },
   headerRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
+  headerBtns:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title:        { fontFamily: Fonts.displayBold, fontSize: 15, letterSpacing: -0.3 },
   sub:          { fontFamily: Fonts.mono, fontSize: 10 },
+
+  // Session record button
+  sessionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+  },
+  sessionBtnIcon: { fontSize: 10 },
+  sessionBtnText: { fontFamily: Fonts.mono, fontSize: 10 },
+
   clearBtn:     { padding: 6 },
   clearBtnText: { fontSize: 14 },
+
+  // Recording bar
+  recordingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+  },
+  recordingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  recordingText: { fontFamily: Fonts.mono, fontSize: 10 },
+
   feed:         { flex: 1, ...Platform.select({ web: { minHeight: 0 } }) },
   feedContent:  { padding: Spacing.md, gap: 12 },
   msgRow:       { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
@@ -236,7 +309,6 @@ const styles = StyleSheet.create({
   bubble:       { maxWidth: '82%', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16, borderWidth: 1 },
   msgTime:      { fontFamily: Fonts.mono, fontSize: 9, marginTop: 6 },
 
-  // Thinking indicator
   thinkingRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
   pulseDot:     { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
   thinkingText: { fontFamily: Fonts.mono, fontSize: 12, flex: 1, flexWrap: 'wrap' },

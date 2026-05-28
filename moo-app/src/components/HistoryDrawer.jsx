@@ -11,6 +11,8 @@ import {
   getLocalSessionList, deleteLocalSession, getLocalSession,
   getRemoteSessions, getRemoteSession, deleteRemoteSession,
 } from '../hooks/useSessionStorage';
+import { getRecording } from '../hooks/useRecording';
+import { ReplayModal }  from './ReplayModal';
 
 const DRAWER_WIDTH = 300;
 
@@ -32,9 +34,10 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
   const insets     = useSafeAreaInsets();
   const slideAnim  = React.useRef(new Animated.Value(-DRAWER_WIDTH)).current;
 
-  const [sessions, setSessions] = useState([]);
-  const [loading,  setLoading]  = useState(false);
-  const [deleting, setDeleting] = useState(null);
+  const [sessions,       setSessions]       = useState([]);
+  const [loading,        setLoading]        = useState(false);
+  const [deleting,       setDeleting]       = useState(null);
+  const [replaySession,  setReplaySession]  = useState(null); // {id, title}
 
   // ── Animate ────────────────────────────────────────────────────
   useEffect(() => {
@@ -213,16 +216,28 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity
-                    onPress={(e) => handleDelete(e, session)}
-                    style={styles.deleteBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    {deleting === session.id
-                      ? <ActivityIndicator size="small" color={colors.danger} />
-                      : <Text style={[styles.deleteIcon, { color: colors.textMuted }]}>🗑</Text>
-                    }
-                  </TouchableOpacity>
+                  <View style={styles.cardActions}>
+                    {/* Replay button — only if recording exists */}
+                    {getRecording(session.id) && (
+                      <TouchableOpacity
+                        onPress={() => setReplaySession({ id: session.id, title: session.title })}
+                        style={styles.replayBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.replayIcon}>▶️</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={(e) => handleDelete(e, session)}
+                      style={styles.deleteBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      {deleting === session.id
+                        ? <ActivityIndicator size="small" color={colors.danger} />
+                        : <Text style={[styles.deleteIcon, { color: colors.textMuted }]}>🗑</Text>
+                      }
+                    </TouchableOpacity>
+                  </View>
                 </TouchableOpacity>
               );
             })
@@ -236,6 +251,15 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
           </Text>
         </View>
       </Animated.View>
+      {/* Replay modal */}
+      {replaySession && (
+        <ReplayModal
+          visible={!!replaySession}
+          onClose={() => setReplaySession(null)}
+          sessionId={replaySession?.id}
+          sessionTitle={replaySession?.title}
+        />
+      )}
     </>
   );
 }
@@ -312,6 +336,9 @@ const styles = StyleSheet.create({
   fieldBadge:    { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10, borderWidth: 1 },
   fieldBadgeText:{ fontFamily: Fonts.mono, fontSize: 10 },
   cardTime:      { fontFamily: Fonts.mono, fontSize: 10 },
+  cardActions:   { flexDirection: 'column', alignItems: 'center', gap: 6 },
+  replayBtn:     { padding: 4 },
+  replayIcon:    { fontSize: 14 },
   deleteBtn:     { padding: 4, marginTop: 2 },
   deleteIcon:    { fontSize: 14 },
 

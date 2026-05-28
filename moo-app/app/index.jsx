@@ -18,6 +18,7 @@ import {
   migrateLocalToRemote,
 } from '../src/hooks/useSessionStorage';
 import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
+import { useRecording } from '../src/hooks/useRecording';
 import { useAuth }          from '../src/context/AuthContext';
 import { useTheme }         from '../src/context/ThemeContext';
 
@@ -110,6 +111,16 @@ export default function MainScreen() {
   useEffect(() => { fieldStatsRef.current = fieldStats; }, [fieldStats]);
 
   const { connStatus, init, initMCP, sendMessage, clearHistory } = useJackDaw();
+  const {
+    isSessionActive,
+    isRecording,
+    sessionIdRef: recordingSessionIdRef,
+    startSession:  startRecordingSession,
+    startClip,
+    pauseClip,
+    endSession:    endRecordingSession,
+    cancelSession: cancelRecordingSession,
+  } = useRecording();
 
   useEffect(() => {
     init((pct, label) => {
@@ -193,6 +204,10 @@ export default function MainScreen() {
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setStreamStatus('Thinking…');
+
+    // Start recording clip when user sends message
+    if (isSessionActive) startClip(text);
+
     try {
       const reply = await sendMessage(
         text,
@@ -204,10 +219,13 @@ export default function MainScreen() {
       const assistantMsg = { role: 'assistant', content: reply, time: now() };
       setMessages(prev => {
         const updated = [...prev, assistantMsg];
-        // Auto-save after every complete exchange
         autoSave(updated, polygonRef.current, fieldStatsRef.current);
         return updated;
       });
+
+      // Pause recording after response received
+      if (isSessionActive) pauseClip();
+
       if (isMobile && activePanel === 'map') setUnreadCount(c => c + 1);
       if (!isSignedIn && !nudgeShownRef.current) {
         nudgeShownRef.current = true;
@@ -215,11 +233,23 @@ export default function MainScreen() {
       }
     } catch (err) {
       appendMsg('assistant', `⚠️ Could not reach analysis service.\n\nError: ${err.message}`);
+      if (isSessionActive) pauseClip();
     } finally {
       setIsLoading(false);
       setStreamStatus('');
     }
-  }, [sendMessage, customerId, isSignedIn, isMobile, activePanel, autoSave, appendMsg]);
+  }, [sendMessage, customerId, isSignedIn, isMobile, activePanel, autoSave, appendMsg, isSessionActive, startClip, pauseClip]);
+
+  // ── Session recording controls ────────────────────────────────
+  const handleStartSession = useCallback(() => {
+    const newId = `rec_${Date.now()}`;
+    startRecordingSession(newId);
+  }, [startRecordingSession]);
+
+  const handleEndSession = useCallback(() => {
+    const title = messagesRef.current.find(m => m.role === 'user')?.content?.slice(0, 60) || 'Session';
+    endRecordingSession(sessionIdRef.current, title);
+  }, [endRecordingSession, sessionIdRef]);
 
   const handleSend = useCallback((text) => { doSend(text); }, [doSend]);
 
@@ -326,6 +356,10 @@ export default function MainScreen() {
             onSend={handleSend}
             onClearChat={handleClearChat}
             hasField={!!polygon}
+            isSessionActive={isSessionActive}
+            isRecording={isRecording}
+            onStartSession={handleStartSession}
+            onEndSession={handleEndSession}
           />
         </View>
       </View>
