@@ -242,14 +242,19 @@ export default function MainScreen() {
 
   // ── Session recording controls ────────────────────────────────
   const handleStartSession = useCallback(() => {
-    const newId = `rec_${Date.now()}`;
-    startRecordingSession(newId);
+    // Start with temp ID — will be replaced with chat session ID on end
+    const tempId = `rec_${Date.now()}`;
+    startRecordingSession(tempId);
   }, [startRecordingSession]);
 
   const handleEndSession = useCallback(() => {
     const title = messagesRef.current.find(m => m.role === 'user')?.content?.slice(0, 60) || 'Session';
-    endRecordingSession(sessionIdRef.current, title);
-  }, [endRecordingSession, sessionIdRef]);
+    // Use chat sessionIdRef (PostgreSQL UUID or local ID) as recording key
+    // so getRecording(session.id) can find it in the history drawer
+    const chatSessionId = sessionIdRef.current || recordingSessionIdRef.current;
+    console.log('End session — saving recording with ID:', chatSessionId);
+    endRecordingSession(chatSessionId, title);
+  }, [endRecordingSession, sessionIdRef, recordingSessionIdRef]);
 
   const handleSend = useCallback((text) => { doSend(text); }, [doSend]);
 

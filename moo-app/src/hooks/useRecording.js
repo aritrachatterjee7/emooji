@@ -128,14 +128,15 @@ export function useRecording() {
       clipsRef.current.push({ ...currentClip.current });
     }
 
+    // Use provided sessionId (chat UUID) or fall back to temp recording ID
     const finalSessionId = sessionId || sessionIdRef.current;
     if (!finalSessionId || clipsRef.current.length === 0) {
+      console.log('No clips to save — session cancelled');
       setIsSessionActive(false);
       setIsRecording(false);
       return;
     }
 
-    // Save recording
     const recording = {
       sessionId:   finalSessionId,
       title:       sessionTitle || 'Session Recording',
@@ -144,16 +145,19 @@ export function useRecording() {
       recordedAt:  new Date().toISOString(),
     };
 
-    const existing = getStoredRecordings().filter(r => r.sessionId !== finalSessionId);
-    const updated  = [recording, ...existing].slice(0, MAX_RECORDINGS);
+    // Remove any existing recording with same ID or old temp ID
+    const existing = getStoredRecordings().filter(
+      r => r.sessionId !== finalSessionId && r.sessionId !== sessionIdRef.current
+    );
+    const updated = [recording, ...existing].slice(0, MAX_RECORDINGS);
     saveStoredRecordings(updated);
 
     console.log('Session recording saved:', finalSessionId,
       '—', clipsRef.current.length, 'clips');
 
     // Reset
-    clipsRef.current    = [];
-    currentClip.current = null;
+    clipsRef.current     = [];
+    currentClip.current  = null;
     sessionIdRef.current = null;
     setIsSessionActive(false);
     setIsRecording(false);
