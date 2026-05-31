@@ -1,6 +1,9 @@
 // src/components/TopNav.jsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert, Modal } from 'react-native';
+import {
+  View, Text, TouchableOpacity, StyleSheet, Platform,
+  Alert, Modal, useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Fonts, Radius, Spacing, NAV_HEIGHT, DarkColors } from '../constants/tokens';
 import { useAuth } from '../context/AuthContext';
@@ -56,7 +59,9 @@ function IOSInstallModal({ visible, onClose, colors }) {
 }
 
 export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignIn, onHistory, onRecordings }) {
-  const insets = useSafeAreaInsets();
+  const insets         = useSafeAreaInsets();
+  const { width }      = useWindowDimensions();
+  const isMobile       = width < 860;
   const { state, label } = connStatus;
 
   const { logout, user } = useAuth() ?? { logout: () => {}, user: null };
@@ -109,75 +114,82 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
           </Text>
         </View>
 
-        {/* Field info (centre) */}
-        {fieldStats && (
+        {/* Field info — hide on small mobile to save space */}
+        {fieldStats && !isMobile && (
           <View style={styles.center}>
             <Text style={[styles.centerArea, { color: colors.textSecondary }]}>{fieldStats.areaHa} ha</Text>
-            <Text style={[styles.centerDot,  { color: colors.textMuted }]}>·</Text>
+            <Text style={[styles.centerDot, { color: colors.textMuted }]}>·</Text>
             <Text style={[styles.centerCoords, { color: colors.textMuted }]} numberOfLines={1}>{fieldStats.centroid}</Text>
+          </View>
+        )}
+
+        {/* Field area only on mobile */}
+        {fieldStats && isMobile && (
+          <View style={styles.centerMobile}>
+            <Text style={[styles.centerArea, { color: colors.green }]}>{fieldStats.areaHa} ha</Text>
           </View>
         )}
 
         {/* Right side */}
         <View style={styles.right}>
 
-          {/* Status badge */}
+          {/* Status badge — hide label on mobile */}
           <View style={[
             styles.badge,
             { borderColor: colors.borderMid, backgroundColor: colors.bgElevated },
             state === 'online' && { borderColor: colors.greenBorder },
           ]}>
             <StatusDot state={state} colors={colors} />
-            <Text style={[
-              styles.badgeLabel,
-              { color: state === 'online' ? colors.green : state === 'connecting' ? colors.warning : colors.danger }
-            ]}>{label}</Text>
+            {!isMobile && (
+              <Text style={[
+                styles.badgeLabel,
+                { color: state === 'online' ? colors.green : state === 'connecting' ? colors.warning : colors.danger }
+              ]}>{label}</Text>
+            )}
           </View>
 
-          {/* Dark / Light toggle */}
+          {/* Theme toggle */}
           <TouchableOpacity
-            style={[styles.themeBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
+            style={[styles.iconBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
             onPress={toggleTheme}
           >
-            <Text style={styles.themeIcon}>{isDark ? '☀️' : '🌙'}</Text>
+            <Text style={styles.iconBtnText}>{isDark ? '☀️' : '🌙'}</Text>
           </TouchableOpacity>
 
-          {/* History button — only when signed in */}
-          {onHistory && (
-            <TouchableOpacity
-              style={[styles.themeBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
-              onPress={onHistory}
-              accessibilityLabel="Chat history"
-            >
-              <Text style={styles.themeIcon}>🕐</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Recordings button — visible to everyone */}
+          {/* Recordings — always visible */}
           {onRecordings && (
             <TouchableOpacity
-              style={[styles.themeBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
+              style={[styles.iconBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
               onPress={onRecordings}
-              accessibilityLabel="My recordings"
             >
-              <Text style={styles.themeIcon}>🎬</Text>
+              <Text style={styles.iconBtnText}>🎬</Text>
             </TouchableOpacity>
           )}
 
-          {/* Install button */}
-          {showInstallButton && (
+          {/* History — signed in only */}
+          {onHistory && (
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}
+              onPress={onHistory}
+            >
+              <Text style={styles.iconBtnText}>🕐</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Install — hide on mobile if signed in to save space */}
+          {showInstallButton && (!isMobile || !user) && (
             <TouchableOpacity
               style={[styles.installBtn, { backgroundColor: colors.green }]}
               onPress={handleInstallPress}
               activeOpacity={0.85}
             >
               <Text style={styles.installText}>
-                {installPlatform === 'ios' ? '⊕ Install' : 'Install'}
+                {installPlatform === 'ios' ? '⊕' : 'Install'}
               </Text>
             </TouchableOpacity>
           )}
 
-          {/* Sign In — shown when not logged in */}
+          {/* Sign In */}
           {!user && (
             <TouchableOpacity
               style={[styles.signInBtn, { backgroundColor: colors.green }]}
@@ -188,7 +200,7 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
             </TouchableOpacity>
           )}
 
-          {/* Avatar + logout — shown when logged in */}
+          {/* Avatar */}
           {user && (
             <TouchableOpacity style={styles.avatarBtn} onPress={handleLogout} activeOpacity={0.7}>
               {user.photoURL ? (
@@ -226,7 +238,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
-    gap: 10,
+    gap: 6,
     borderBottomWidth: 1,
     zIndex: 100,
     ...Platform.select({
@@ -234,24 +246,25 @@ const styles = StyleSheet.create({
       android: { elevation: 4 },
     }),
   },
-  brand:        { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cow:          { fontSize: 20 },
-  name:         { fontFamily: Fonts.displayBold, fontSize: 17, letterSpacing: -0.3 },
+  brand:        { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  cow:          { fontSize: 18 },
+  name:         { fontFamily: Fonts.displayBold, fontSize: 16, letterSpacing: -0.3 },
   center:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, overflow: 'hidden' },
+  centerMobile: { flex: 1, alignItems: 'center' },
   centerArea:   { fontFamily: Fonts.mono, fontSize: 11 },
   centerDot:    { fontFamily: Fonts.mono, fontSize: 11 },
   centerCoords: { fontFamily: Fonts.mono, fontSize: 11, flexShrink: 1 },
-  right:        { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
-  badge:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
+  right:        { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto' },
+  badge:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
   dot:          { width: 6, height: 6, borderRadius: 3 },
   badgeLabel:   { fontFamily: Fonts.mono, fontSize: 10 },
-  themeBtn:     { width: 30, height: 30, borderRadius: Radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  themeIcon:    { fontSize: 14 },
-  installBtn:   { paddingHorizontal: 10, paddingVertical: 5, borderRadius: Radius.md },
+  iconBtn:      { width: 30, height: 30, borderRadius: Radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  iconBtnText:  { fontSize: 13 },
+  installBtn:   { paddingHorizontal: 8, paddingVertical: 5, borderRadius: Radius.md },
   installText:  { fontFamily: Fonts.body, fontSize: 12, fontWeight: '700', color: '#07090e' },
-  signInBtn:    { paddingHorizontal: 14, paddingVertical: 6, borderRadius: Radius.md },
+  signInBtn:    { paddingHorizontal: 12, paddingVertical: 6, borderRadius: Radius.md },
   signInText:   { fontFamily: Fonts.displayBold, fontSize: 12, color: '#07090e' },
-  avatarBtn:      { marginLeft: 4 },
+  avatarBtn:      { marginLeft: 2 },
   avatarFallback: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   avatarText:     { fontFamily: Fonts.displayBold, fontSize: 13, color: '#07090e' },
 });
@@ -261,13 +274,9 @@ const iosStyles = StyleSheet.create({
   sheet: {
     position: 'absolute',
     bottom: 0, left: 0, right: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderBottomWidth: 0,
-    padding: Spacing.xl,
-    paddingBottom: 40,
-    gap: 16,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    borderWidth: 1, borderBottomWidth: 0,
+    padding: Spacing.xl, paddingBottom: 40, gap: 16,
   },
   closeBtn:    { position: 'absolute', top: 14, right: 16, padding: 6, zIndex: 10 },
   closeText:   { fontSize: 16 },

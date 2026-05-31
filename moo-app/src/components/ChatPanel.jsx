@@ -5,6 +5,7 @@ import {
   StyleSheet, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { Fonts, Radius, Spacing } from '../constants/tokens';
+import { useWindowDimensions } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { parseMarkdownNative, parseInline } from '../utils/markdown';
 
@@ -138,7 +139,9 @@ export function ChatPanel({
   messages, isLoading, streamStatus, onSend, onClearChat,
   isSessionActive, isRecording, onStartSession, onEndSession,
 }) {
-  const { colors } = useTheme();
+  const { colors }  = useTheme();
+  const { width }   = useWindowDimensions();
+  const isMobile    = width < 860;
   const [text, setText] = useState('');
   const scrollRef = useRef(null);
 
@@ -167,15 +170,15 @@ export function ChatPanel({
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>Field Analysis</Text>
           <View style={styles.headerBtns}>
-            {/* Start / End Session button */}
+            {/* Start / End Session button — icon only on mobile */}
             {!isSessionActive ? (
               <TouchableOpacity
                 style={[styles.sessionBtn, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}
                 onPress={onStartSession}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.sessionBtnIcon]}>⏺</Text>
-                <Text style={[styles.sessionBtnText, { color: colors.green }]}>Start Session</Text>
+                <Text style={styles.sessionBtnIcon}>⏺</Text>
+                {!isMobile && <Text style={[styles.sessionBtnText, { color: colors.green }]}>Start Session</Text>}
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -184,7 +187,7 @@ export function ChatPanel({
                 activeOpacity={0.8}
               >
                 <Text style={styles.sessionBtnIcon}>⏹</Text>
-                <Text style={[styles.sessionBtnText, { color: '#dc2626' }]}>End Session</Text>
+                {!isMobile && <Text style={[styles.sessionBtnText, { color: '#dc2626' }]}>End Session</Text>}
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onClearChat} style={styles.clearBtn} activeOpacity={0.7}>

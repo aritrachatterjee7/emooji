@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  Platform, Animated, Pressable, ActivityIndicator,
+  Platform, Animated, Pressable, ActivityIndicator, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
@@ -12,9 +12,9 @@ import {
   getRemoteSessions, getRemoteSession, deleteRemoteSession,
 } from '../hooks/useSessionStorage';
 import { getRecording, exportRecordingAsHTML } from '../hooks/useRecording';
-import { ReplayModal }  from './ReplayModal';
+import { ReplayModal } from './ReplayModal';
 
-const DRAWER_WIDTH = 300;
+const DESKTOP_WIDTH = 300;
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -30,35 +30,34 @@ function timeAgo(dateStr) {
 }
 
 export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewChat }) {
-  const { colors } = useTheme();
-  const insets     = useSafeAreaInsets();
-  const slideAnim  = React.useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const { colors }    = useTheme();
+  const insets        = useSafeAreaInsets();
+  const { width }     = useWindowDimensions();
+  const isMobile      = width < 860;
+  const drawerWidth   = isMobile ? width : DESKTOP_WIDTH;
+  const slideAnim     = React.useRef(new Animated.Value(-drawerWidth)).current;
 
-  const [sessions,       setSessions]       = useState([]);
-  const [loading,        setLoading]        = useState(false);
-  const [deleting,       setDeleting]       = useState(null);
-  const [replaySession,  setReplaySession]  = useState(null); // {id, title}
+  const [sessions,      setSessions]      = useState([]);
+  const [loading,       setLoading]       = useState(false);
+  const [deleting,      setDeleting]      = useState(null);
+  const [replaySession, setReplaySession] = useState(null);
 
-  // ── Animate ────────────────────────────────────────────────────
   useEffect(() => {
     Animated.spring(slideAnim, {
-      toValue:         visible ? 0 : -DRAWER_WIDTH,
+      toValue:         visible ? 0 : -drawerWidth,
       useNativeDriver: Platform.OS !== 'web',
       tension:         80,
       friction:        12,
     }).start();
-  }, [visible]);
+  }, [visible, drawerWidth]);
 
-  // ── Load sessions ───────────────────────────────────────────────
   const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
       if (userId) {
-        // Signed in — load from PostgreSQL
         const remote = await getRemoteSessions(userId);
         setSessions(remote.map(s => ({ ...s, local: false })));
       } else {
-        // Not signed in — load from localStorage
         setSessions(getLocalSessionList());
       }
     } catch (e) {
@@ -72,7 +71,6 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
     if (visible) loadSessions();
   }, [visible, loadSessions]);
 
-  // ── Load single session ─────────────────────────────────────────
   const handleLoad = useCallback(async (session) => {
     try {
       let data;
@@ -81,18 +79,14 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
       } else {
         data = await getRemoteSession(userId, session.id);
       }
-      if (data) {
-        onLoadSession(data);
-        onClose();
-      }
+      if (data) { onLoadSession(data); onClose(); }
     } catch (e) {
       console.error('Failed to load session:', e);
     }
   }, [userId, onLoadSession, onClose]);
 
-  // ── Delete session ──────────────────────────────────────────────
   const handleDelete = useCallback(async (e, session) => {
-    e.stopPropagation();
+    e?.stopPropagation?.();
     setDeleting(session.id);
     try {
       if (session.local) {
@@ -112,21 +106,19 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
     try {
       if (!session.field_stats) return null;
       const stats = typeof session.field_stats === 'string'
-        ? JSON.parse(session.field_stats)
-        : session.field_stats;
+        ? JSON.parse(session.field_stats) : session.field_stats;
       return stats?.areaHa;
     } catch { return null; }
   };
 
   return (
     <>
-      {visible && (
-        <Pressable style={styles.backdrop} onPress={onClose} />
-      )}
+      {visible && <Pressable style={styles.backdrop} onPress={onClose} />}
 
       <Animated.View style={[
         styles.drawer,
         {
+          width: drawerWidth,
           transform: [{ translateX: slideAnim }],
           backgroundColor: colors.bgSurface,
           borderRightColor: colors.border,
@@ -136,7 +128,7 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
 
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Chat History</Text>
             <Text style={[styles.sub, { color: colors.textMuted }]}>
               {sessions.length} session{sessions.length !== 1 ? 's' : ''}
@@ -158,7 +150,6 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
           <Text style={styles.newChatText}>New Chat</Text>
         </TouchableOpacity>
 
-        {/* Sign-in prompt for unauthenticated */}
         {!userId && (
           <View style={[styles.signInBanner, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}>
             <Text style={[styles.signInBannerText, { color: colors.green }]}>
@@ -167,7 +158,6 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
           </View>
         )}
 
-        {/* Session list */}
         <ScrollView
           style={styles.list}
           showsVerticalScrollIndicator={false}
@@ -188,7 +178,8 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
             </View>
           ) : (
             sessions.map(session => {
-              const areaHa = getFieldStats(session);
+              const areaHa    = getFieldStats(session);
+              const hasReplay = !!getRecording(session.id);
               return (
                 <TouchableOpacity
                   key={session.id}
@@ -217,33 +208,32 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
                     </View>
                   </View>
                   <View style={styles.cardActions}>
-                    {/* Replay + Download buttons — only if recording exists */}
-                    {getRecording(session.id) && (
+                    {hasReplay && (
                       <>
                         <TouchableOpacity
                           onPress={() => setReplaySession({ id: session.id, title: session.title })}
-                          style={styles.replayBtn}
+                          style={styles.iconBtn}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Text style={styles.replayIcon}>▶️</Text>
+                          <Text style={styles.iconBtnText}>▶️</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => exportRecordingAsHTML(session.id, session.title)}
-                          style={styles.replayBtn}
+                          style={styles.iconBtn}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Text style={styles.replayIcon}>⬇️</Text>
+                          <Text style={styles.iconBtnText}>⬇️</Text>
                         </TouchableOpacity>
                       </>
                     )}
                     <TouchableOpacity
                       onPress={(e) => handleDelete(e, session)}
-                      style={styles.deleteBtn}
+                      style={styles.iconBtn}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       {deleting === session.id
                         ? <ActivityIndicator size="small" color={colors.danger} />
-                        : <Text style={[styles.deleteIcon, { color: colors.textMuted }]}>🗑</Text>
+                        : <Text style={styles.iconBtnText}>🗑</Text>
                       }
                     </TouchableOpacity>
                   </View>
@@ -253,14 +243,13 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
           )}
         </ScrollView>
 
-        {/* Footer */}
         <View style={[styles.footer, { borderTopColor: colors.border }]}>
           <Text style={[styles.footerText, { color: colors.textMuted }]}>
             Sessions save when you start a new chat
           </Text>
         </View>
       </Animated.View>
-      {/* Replay modal */}
+
       {replaySession && (
         <ReplayModal
           visible={!!replaySession}
@@ -276,34 +265,46 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    zIndex: 200,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 9998,
   },
   drawer: {
     position: 'absolute',
     top: 0, bottom: 0, left: 0,
-    width: DRAWER_WIDTH,
-    zIndex: 201,
+    zIndex: 9999,
     borderRightWidth: 1,
     flexDirection: 'column',
     ...Platform.select({
-      ios:     { shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 4, height: 0 } },
-      android: { elevation: 16 },
-      web:     { boxShadow: '4px 0 24px rgba(0,0,0,0.2)' },
+      ios:     { shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 4, height: 0 } },
+      android: { elevation: 32 },
+      web:     { boxShadow: '4px 0 24px rgba(0,0,0,0.3)' },
     }),
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     padding: Spacing.lg,
     paddingTop: Spacing.xl,
     borderBottomWidth: 1,
+    gap: 8,
   },
   title:     { fontFamily: Fonts.displayBold, fontSize: 17 },
   sub:       { fontFamily: Fonts.mono, fontSize: 10, marginTop: 2 },
-  closeBtn:  { padding: 6 },
-  closeIcon: { fontSize: 16 },
+  closeBtn:  { padding: 8 },
+  closeIcon: { fontSize: 18 },
+
+  newChatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    margin: Spacing.md,
+    marginBottom: 4,
+    padding: 13,
+    borderRadius: Radius.lg,
+  },
+  newChatIcon: { fontSize: 15 },
+  newChatText: { fontFamily: Fonts.displayBold, fontSize: 14, color: '#07090e' },
 
   signInBanner: {
     margin: Spacing.md,
@@ -337,35 +338,18 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
-  cardMain:      { flex: 1, gap: 6 },
-  cardTitle:     { fontFamily: Fonts.bodyMedium, fontSize: 13, lineHeight: 18 },
-  cardMeta:      { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  localBadge:    { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, borderWidth: 1 },
-  localBadgeText:{ fontFamily: Fonts.mono, fontSize: 9 },
-  fieldBadge:    { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10, borderWidth: 1 },
-  fieldBadgeText:{ fontFamily: Fonts.mono, fontSize: 10 },
-  cardTime:      { fontFamily: Fonts.mono, fontSize: 10 },
-  cardActions:   { flexDirection: 'column', alignItems: 'center', gap: 6 },
-  replayBtn:     { padding: 4 },
-  replayIcon:    { fontSize: 14 },
-  deleteBtn:     { padding: 4, marginTop: 2 },
-  deleteIcon:    { fontSize: 14 },
+  cardMain:       { flex: 1, gap: 6 },
+  cardTitle:      { fontFamily: Fonts.bodyMedium, fontSize: 13, lineHeight: 18 },
+  cardMeta:       { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  localBadge:     { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, borderWidth: 1 },
+  localBadgeText: { fontFamily: Fonts.mono, fontSize: 9 },
+  fieldBadge:     { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10, borderWidth: 1 },
+  fieldBadgeText: { fontFamily: Fonts.mono, fontSize: 10 },
+  cardTime:       { fontFamily: Fonts.mono, fontSize: 10 },
+  cardActions:    { flexDirection: 'column', alignItems: 'center', gap: 4 },
+  iconBtn:        { padding: 4 },
+  iconBtnText:    { fontSize: 15 },
 
-  newChatBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    margin: Spacing.md,
-    marginBottom: 4,
-    padding: 12,
-    borderRadius: Radius.lg,
-  },
-  newChatIcon: { fontSize: 15 },
-  newChatText: { fontFamily: Fonts.displayBold, fontSize: 14, color: '#07090e' },
-  footer: {
-    padding: Spacing.md,
-    borderTopWidth: 1,
-  },
+  footer: { padding: Spacing.md, borderTopWidth: 1 },
   footerText: { fontFamily: Fonts.mono, fontSize: 10, textAlign: 'center', lineHeight: 16 },
 });
