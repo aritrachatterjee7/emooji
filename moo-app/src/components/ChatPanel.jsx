@@ -2,10 +2,9 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Platform, KeyboardAvoidingView,
+  StyleSheet, Platform, KeyboardAvoidingView, useWindowDimensions,
 } from 'react-native';
 import { Fonts, Radius, Spacing } from '../constants/tokens';
-import { useWindowDimensions } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { parseMarkdownNative, parseInline } from '../utils/markdown';
 
@@ -123,13 +122,18 @@ function WelcomeMessage({ colors }) {
   );
 }
 
-// ── Recording status bar ───────────────────────────────────────────────────
 function RecordingBar({ isRecording, colors }) {
   return (
-    <View style={[styles.recordingBar, { backgroundColor: isRecording ? 'rgba(220,38,38,0.12)' : 'rgba(11,219,110,0.08)', borderColor: isRecording ? 'rgba(220,38,38,0.3)' : colors.greenBorder }]}>
+    <View style={[
+      styles.recordingBar,
+      {
+        backgroundColor: isRecording ? 'rgba(220,38,38,0.12)' : 'rgba(11,219,110,0.08)',
+        borderColor: isRecording ? 'rgba(220,38,38,0.3)' : colors.greenBorder,
+      }
+    ]}>
       <View style={[styles.recordingDot, { backgroundColor: isRecording ? '#dc2626' : colors.green }]} />
       <Text style={[styles.recordingText, { color: isRecording ? '#dc2626' : colors.green }]}>
-        {isRecording ? 'Recording…' : 'Session active — recording paused'}
+        {isRecording ? '● Recording…' : '● Session active — paused between questions'}
       </Text>
     </View>
   );
@@ -168,9 +172,11 @@ export function ChatPanel({
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.bgElevated, borderBottomColor: colors.border }]}>
         <View style={styles.headerRow}>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Field Analysis</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {isMobile ? 'Analysis' : 'Field Analysis'}
+          </Text>
           <View style={styles.headerBtns}>
-            {/* Start / End Session button — icon only on mobile */}
+            {/* Session record button */}
             {!isSessionActive ? (
               <TouchableOpacity
                 style={[styles.sessionBtn, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}
@@ -178,7 +184,9 @@ export function ChatPanel({
                 activeOpacity={0.8}
               >
                 <Text style={styles.sessionBtnIcon}>⏺</Text>
-                {!isMobile && <Text style={[styles.sessionBtnText, { color: colors.green }]}>Start Session</Text>}
+                <Text style={[styles.sessionBtnText, { color: colors.green }]}>
+                  {isMobile ? 'Record' : 'Start Session'}
+                </Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
@@ -187,7 +195,9 @@ export function ChatPanel({
                 activeOpacity={0.8}
               >
                 <Text style={styles.sessionBtnIcon}>⏹</Text>
-                {!isMobile && <Text style={[styles.sessionBtnText, { color: '#dc2626' }]}>End Session</Text>}
+                <Text style={[styles.sessionBtnText, { color: '#dc2626' }]}>
+                  {isMobile ? 'Stop' : 'End Session'}
+                </Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onClearChat} style={styles.clearBtn} activeOpacity={0.7}>
@@ -195,10 +205,14 @@ export function ChatPanel({
             </TouchableOpacity>
           </View>
         </View>
-        <Text style={[styles.sub, { color: colors.textMuted }]}>Draw any field · Ask in plain language · Real satellite data</Text>
+        {!isMobile && (
+          <Text style={[styles.sub, { color: colors.textMuted }]}>
+            Draw any field · Ask in plain language · Real satellite data
+          </Text>
+        )}
       </View>
 
-      {/* Recording status bar — shown when session is active */}
+      {/* Recording bar */}
       {isSessionActive && (
         <RecordingBar isRecording={isRecording} colors={colors} />
       )}
@@ -241,7 +255,9 @@ export function ChatPanel({
             <Text style={[styles.sendIcon, { color: (!text.trim() || isLoading) ? colors.textMuted : '#000' }]}>➤</Text>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.footer, { color: colors.textMuted }]}>JackDaw GeoAI · PoliRuralPlus · Copernicus</Text>
+        <Text style={[styles.footer, { color: colors.textMuted }]}>
+          JackDaw GeoAI · PoliRuralPlus · Copernicus
+        </Text>
       </View>
     </>
   );
@@ -265,64 +281,59 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     ...Platform.select({ web: { overflow: 'hidden' } }),
   },
-  header:       { flexShrink: 0, padding: Spacing.md, paddingBottom: 9, borderBottomWidth: 1 },
-  headerRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
-  headerBtns:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title:        { fontFamily: Fonts.displayBold, fontSize: 15, letterSpacing: -0.3 },
-  sub:          { fontFamily: Fonts.mono, fontSize: 10 },
+  header:    { flexShrink: 0, padding: Spacing.md, paddingBottom: 9, borderBottomWidth: 1 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
+  headerBtns:{ flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title:     { fontFamily: Fonts.displayBold, fontSize: 15, letterSpacing: -0.3 },
+  sub:       { fontFamily: Fonts.mono, fontSize: 10 },
 
-  // Session record button
   sessionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: Radius.md,
     borderWidth: 1,
   },
   sessionBtnIcon: { fontSize: 10 },
-  sessionBtnText: { fontFamily: Fonts.mono, fontSize: 10 },
+  sessionBtnText: { fontFamily: Fonts.mono, fontSize: 11 },
 
   clearBtn:     { padding: 6 },
   clearBtnText: { fontSize: 14 },
 
-  // Recording bar
   recordingBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderBottomWidth: 1,
   },
-  recordingDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  recordingText: { fontFamily: Fonts.mono, fontSize: 10 },
+  recordingDot:  { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
+  recordingText: { fontFamily: Fonts.mono, fontSize: 11, flex: 1 },
 
-  feed:         { flex: 1, ...Platform.select({ web: { minHeight: 0 } }) },
-  feedContent:  { padding: Spacing.md, gap: 12 },
-  msgRow:       { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
-  msgRowUser:   { flexDirection: 'row-reverse' },
-  avatar:       { width: 28, height: 28, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  avatarEmoji:  { fontSize: 14 },
-  bubble:       { maxWidth: '82%', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16, borderWidth: 1 },
-  msgTime:      { fontFamily: Fonts.mono, fontSize: 9, marginTop: 6 },
+  feed:        { flex: 1, ...Platform.select({ web: { minHeight: 0 } }) },
+  feedContent: { padding: Spacing.md, gap: 12 },
+  msgRow:      { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
+  msgRowUser:  { flexDirection: 'row-reverse' },
+  avatar:      { width: 28, height: 28, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarEmoji: { fontSize: 14 },
+  bubble:      { maxWidth: '82%', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16, borderWidth: 1 },
+  msgTime:     { fontFamily: Fonts.mono, fontSize: 9, marginTop: 6 },
 
   thinkingRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
   pulseDot:     { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
   thinkingText: { fontFamily: Fonts.mono, fontSize: 12, flex: 1, flexWrap: 'wrap' },
 
-  step:         { flexDirection: 'row', gap: 8, marginTop: 9, alignItems: 'flex-start' },
-  stepNum:      { width: 18, height: 18, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
-  stepNumText:  { fontFamily: Fonts.mono, fontSize: 9 },
-  inputArea:    { flexShrink: 0, padding: Spacing.sm, borderTopWidth: 1 },
-  inputRow:     { flexDirection: 'row', alignItems: 'flex-end', gap: 8, borderRadius: Radius.xl, borderWidth: 1, paddingLeft: 14, paddingRight: 6, paddingVertical: 6 },
-  input:        { flex: 1, fontFamily: Fonts.body, fontSize: 14, maxHeight: 100, paddingVertical: 2 },
-  sendBtn:      { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  sendIcon:     { fontSize: 14 },
-  footer:       { fontFamily: Fonts.mono, fontSize: 9, textAlign: 'center', marginTop: 6 },
+  step:        { flexDirection: 'row', gap: 8, marginTop: 9, alignItems: 'flex-start' },
+  stepNum:     { width: 18, height: 18, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
+  stepNumText: { fontFamily: Fonts.mono, fontSize: 9 },
+
+  inputArea: { flexShrink: 0, padding: Spacing.sm, borderTopWidth: 1 },
+  inputRow:  { flexDirection: 'row', alignItems: 'flex-end', gap: 8, borderRadius: Radius.xl, borderWidth: 1, paddingLeft: 14, paddingRight: 6, paddingVertical: 6 },
+  input:     { flex: 1, fontFamily: Fonts.body, fontSize: 14, maxHeight: 100, paddingVertical: 2 },
+  sendBtn:   { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  sendIcon:  { fontSize: 14 },
+  footer:    { fontFamily: Fonts.mono, fontSize: 9, textAlign: 'center', marginTop: 6 },
 });

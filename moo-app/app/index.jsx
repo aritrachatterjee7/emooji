@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Platform, useWindowDimensions, Animated,
+  PanResponder,
 } from 'react-native';
 import { useJackDaw }       from '../src/hooks/useJackDaw';
 import { TopNav }           from '../src/components/TopNav';
@@ -76,6 +77,27 @@ export default function MainScreen() {
   const prevUserRef = useRef(null);
 
   const fieldMapRef   = useRef(null);
+
+  // ── Swipe from left edge to open history drawer ────────────────
+  const swipeStartX = useRef(null);
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (evt) => {
+        // Only capture touches starting from left edge (first 30px)
+        swipeStartX.current = evt.nativeEvent.pageX;
+        return evt.nativeEvent.pageX < 30;
+      },
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return swipeStartX.current < 30 && gestureState.dx > 10;
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (swipeStartX.current < 30 && gestureState.dx > 50) {
+          setShowHistory(true);
+        }
+        swipeStartX.current = null;
+      },
+    })
+  ).current;
   // Track current session ID so we upsert instead of creating duplicates
   const sessionIdRef  = useRef(null);
 
@@ -306,7 +328,7 @@ export default function MainScreen() {
   const chatVisible = !isMobile || activePanel === 'chat';
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.bgBase }]}>
+    <View style={[styles.root, { backgroundColor: colors.bgBase }]} {...(isMobile ? panResponder.panHandlers : {})}>
 
       <TopNav
         connStatus={connStatus}
