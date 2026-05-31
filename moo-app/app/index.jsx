@@ -1,28 +1,28 @@
 // app/index.jsx
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Platform, useWindowDimensions, Animated,
-  PanResponder,
+  View, Text, StyleSheet, Platform, useWindowDimensions,
+  Animated, PanResponder,
 } from 'react-native';
-import { useJackDaw }       from '../src/hooks/useJackDaw';
-import { TopNav }           from '../src/components/TopNav';
-import { BottomNav }        from '../src/components/BottomNav';
-import { ChatPanel }        from '../src/components/ChatPanel';
-import { MapToolbar }       from '../src/components/MapToolbar';
-import { FieldStatsBar }    from '../src/components/FieldStatsBar';
-import FieldMap             from '../src/components/FieldMap';
-import { NudgeModal }       from '../src/components/NudgeModal';
+import { useJackDaw }          from '../src/hooks/useJackDaw';
+import { TopNav }              from '../src/components/TopNav';
+import { BottomNav }           from '../src/components/BottomNav';
+import { ChatPanel }           from '../src/components/ChatPanel';
+import { MapToolbar }          from '../src/components/MapToolbar';
+import { FieldStatsBar }       from '../src/components/FieldStatsBar';
+import FieldMap                from '../src/components/FieldMap';
+import { NudgeModal }          from '../src/components/NudgeModal';
 import { HistoryDrawer }       from '../src/components/HistoryDrawer';
 import { RecordingsDrawer }    from '../src/components/RecordingsDrawer';
+import { useRecording }        from '../src/hooks/useRecording';
 import {
   upsertLocalSession,
   upsertRemoteSession,
   migrateLocalToRemote,
 } from '../src/hooks/useSessionStorage';
 import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
-import { useRecording } from '../src/hooks/useRecording';
-import { useAuth }          from '../src/context/AuthContext';
-import { useTheme }         from '../src/context/ThemeContext';
+import { useAuth }             from '../src/context/AuthContext';
+import { useTheme }            from '../src/context/ThemeContext';
 
 const MOBILE_BREAKPOINT = 860;
 
@@ -76,64 +76,41 @@ export default function MainScreen() {
   const isSignedIn  = !!user;
   const prevUserRef = useRef(null);
 
-  const fieldMapRef   = useRef(null);
+  const fieldMapRef    = useRef(null);
+  const sessionIdRef   = useRef(null);
+  const messagesRef    = useRef([]);
+  const polygonRef     = useRef(null);
+  const fieldStatsRef  = useRef(null);
 
-  // ── Swipe from left edge to open history drawer ────────────────
-  const swipeStartX = useRef(null);
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: (evt) => {
-        // Only capture touches starting from left edge (first 30px)
-        swipeStartX.current = evt.nativeEvent.pageX;
-        return evt.nativeEvent.pageX < 30;
-      },
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        return swipeStartX.current < 30 && gestureState.dx > 10;
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        if (swipeStartX.current < 30 && gestureState.dx > 50) {
-          setShowHistory(true);
-        }
-        swipeStartX.current = null;
-      },
-    })
-  ).current;
-  // Track current session ID so we upsert instead of creating duplicates
-  const sessionIdRef  = useRef(null);
-
+  // ── Splash ─────────────────────────────────────────────────────
   const [splashVisible,  setSplashVisible]  = useState(true);
   const [splashProgress, setSplashProgress] = useState(0);
   const [splashStatus,   setSplashStatus]   = useState('Initialising…');
 
+  // ── Map ────────────────────────────────────────────────────────
   const [polygon,    setPolygon]    = useState(null);
   const [fieldStats, setFieldStats] = useState(null);
   const [mapLayer,   setMapLayer]   = useState('street');
   const [drawMode,   setDrawMode]   = useState(null);
 
+  // ── Chat ───────────────────────────────────────────────────────
   const [messages,     setMessages]     = useState([]);
   const [isLoading,    setIsLoading]    = useState(false);
   const [streamStatus, setStreamStatus] = useState('');
   const [unreadCount,  setUnreadCount]  = useState(0);
   const [activePanel,  setActivePanel]  = useState('map');
 
-  const [showNudge,    setShowNudge]    = useState(false);
-  const nudgeShownRef = useRef(false);
-
+  // ── Modals & Drawers ───────────────────────────────────────────
+  const [showNudge,      setShowNudge]      = useState(false);
   const [showHistory,    setShowHistory]    = useState(false);
   const [showRecordings, setShowRecordings] = useState(false);
+  const nudgeShownRef = useRef(false);
 
+  // ── PWA install ────────────────────────────────────────────────
   const [installPrompt,  setInstallPrompt]  = useState(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
 
-  // Keep a ref of messages so we can access latest in callbacks
-  const messagesRef  = useRef([]);
-  const polygonRef   = useRef(null);
-  const fieldStatsRef = useRef(null);
-
-  useEffect(() => { messagesRef.current = messages; },   [messages]);
-  useEffect(() => { polygonRef.current = polygon; },     [polygon]);
-  useEffect(() => { fieldStatsRef.current = fieldStats; }, [fieldStats]);
-
+  // ── Hooks ──────────────────────────────────────────────────────
   const { connStatus, init, initMCP, sendMessage, clearHistory } = useJackDaw();
   const {
     isSessionActive,
@@ -143,9 +120,35 @@ export default function MainScreen() {
     startClip,
     pauseClip,
     endSession:    endRecordingSession,
-    cancelSession: cancelRecordingSession,
   } = useRecording();
 
+  // ── Swipe from left edge to open history drawer (mobile) ───────
+  const swipeStartX = useRef(null);
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (evt) => {
+        swipeStartX.current = evt.nativeEvent.pageX;
+        return evt.nativeEvent.pageX < 30;
+      },
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return swipeStartX.current !== null && swipeStartX.current < 30 && gestureState.dx > 10;
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (swipeStartX.current !== null && swipeStartX.current < 30 && gestureState.dx > 50) {
+          setShowHistory(true);
+        }
+        swipeStartX.current = null;
+      },
+      onPanResponderTerminate: () => { swipeStartX.current = null; },
+    })
+  ).current;
+
+  // Keep refs in sync
+  useEffect(() => { messagesRef.current  = messages;   }, [messages]);
+  useEffect(() => { polygonRef.current   = polygon;    }, [polygon]);
+  useEffect(() => { fieldStatsRef.current = fieldStats; }, [fieldStats]);
+
+  // ── Init ───────────────────────────────────────────────────────
   useEffect(() => {
     init((pct, label) => {
       setSplashProgress(pct);
@@ -162,18 +165,17 @@ export default function MainScreen() {
     prevUserRef.current  = user;
 
     if (wasSignedOut && isNowSignedIn) {
-      // Signed in — connect MCP tools + migrate local sessions
       initMCP();
       setShowNudge(false);
       migrateLocalToRemote(user.uid).catch(() => {});
     }
 
     if (wasSignedIn && isNowSignedOut) {
-      // Signed out — disconnect ALL MCP tools so JackDaw returns raw responses
       fetch('/api/mcp/all', { method: 'DELETE' }).catch(() => {});
     }
   }, [user, initMCP]);
 
+  // ── PWA install ────────────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const handler = (e) => {
@@ -189,6 +191,7 @@ export default function MainScreen() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
+  // ── Field handlers ─────────────────────────────────────────────
   const handleFieldDrawn = useCallback((poly, stats) => {
     setPolygon(poly);
     setFieldStats(stats);
@@ -202,19 +205,14 @@ export default function MainScreen() {
     fieldMapRef.current?.clearField();
   }, []);
 
-  // ── Auto-save session after every message exchange ─────────────
-  // Uses upsert so the same session gets updated, not duplicated.
-  const autoSave = useCallback(async (newMessages, poly, stats) => {
-    if (!newMessages || newMessages.length === 0) return;
+  // ── Auto-save ──────────────────────────────────────────────────
+  const autoSave = useCallback(async (msgs, poly, stats) => {
+    if (!msgs || msgs.length === 0) return;
     if (isSignedIn && user) {
-      const id = await upsertRemoteSession(
-        user.uid, newMessages, poly, stats, sessionIdRef.current
-      );
+      const id = await upsertRemoteSession(user.uid, msgs, poly, stats, sessionIdRef.current);
       if (id) sessionIdRef.current = id;
     } else {
-      const id = upsertLocalSession(
-        newMessages, poly, stats, sessionIdRef.current
-      );
+      const id = upsertLocalSession(msgs, poly, stats, sessionIdRef.current);
       if (id) sessionIdRef.current = id;
     }
   }, [isSignedIn, user]);
@@ -223,13 +221,13 @@ export default function MainScreen() {
     setMessages(prev => [...prev, { role, content, time: now() }]);
   }, []);
 
+  // ── Send message ───────────────────────────────────────────────
   const doSend = useCallback(async (text) => {
     const userMsg = { role: 'user', content: text, time: now() };
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setStreamStatus('Thinking…');
 
-    // Start recording clip when user sends message
     if (isSessionActive) startClip(text);
 
     try {
@@ -246,10 +244,7 @@ export default function MainScreen() {
         autoSave(updated, polygonRef.current, fieldStatsRef.current);
         return updated;
       });
-
-      // Pause recording after response received
       if (isSessionActive) pauseClip();
-
       if (isMobile && activePanel === 'map') setUnreadCount(c => c + 1);
       if (!isSignedIn && !nudgeShownRef.current) {
         nudgeShownRef.current = true;
@@ -264,36 +259,30 @@ export default function MainScreen() {
     }
   }, [sendMessage, customerId, isSignedIn, isMobile, activePanel, autoSave, appendMsg, isSessionActive, startClip, pauseClip]);
 
-  // ── Session recording controls ────────────────────────────────
+  const handleSend = useCallback((text) => { doSend(text); }, [doSend]);
+
+  // ── Recording ──────────────────────────────────────────────────
   const handleStartSession = useCallback(() => {
-    // Start with temp ID — will be replaced with chat session ID on end
-    const tempId = `rec_${Date.now()}`;
-    startRecordingSession(tempId);
+    startRecordingSession(`rec_${Date.now()}`);
   }, [startRecordingSession]);
 
   const handleEndSession = useCallback(() => {
     const title = messagesRef.current.find(m => m.role === 'user')?.content?.slice(0, 60) || 'Session';
-    // Use chat sessionIdRef (PostgreSQL UUID or local ID) as recording key
-    // so getRecording(session.id) can find it in the history drawer
     const chatSessionId = sessionIdRef.current || recordingSessionIdRef.current;
-    console.log('End session — saving recording with ID:', chatSessionId);
     endRecordingSession(chatSessionId, title);
-  }, [endRecordingSession, sessionIdRef, recordingSessionIdRef]);
+  }, [endRecordingSession, recordingSessionIdRef]);
 
-  const handleSend = useCallback((text) => { doSend(text); }, [doSend]);
-
-  // ── New chat: reset session ID and clear ───────────────────────
+  // ── Clear chat ─────────────────────────────────────────────────
   const handleClearChat = useCallback(() => {
-    sessionIdRef.current = null; // force new session next time
+    sessionIdRef.current = null;
     setMessages([]);
     setUnreadCount(0);
     nudgeShownRef.current = false;
     clearHistory();
   }, [clearHistory]);
 
-  // ── Load session from history ───────────────────────────────────
+  // ── Load session from history ──────────────────────────────────
   const handleLoadSession = useCallback((session) => {
-    // Set session ID so future messages update this session
     sessionIdRef.current = session.local ? null : session.id;
     setMessages(session.messages || []);
     if (session.polygon) setPolygon(session.polygon);
@@ -328,20 +317,23 @@ export default function MainScreen() {
   const chatVisible = !isMobile || activePanel === 'chat';
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.bgBase }]} {...(isMobile ? panResponder.panHandlers : {})}>
-
+    <View
+      style={[styles.root, { backgroundColor: colors.bgBase }]}
+      {...(isMobile ? panResponder.panHandlers : {})}
+    >
       <TopNav
         connStatus={connStatus}
         fieldStats={fieldStats}
         showInstall={showInstallBtn}
         onInstall={handleInstall}
         onSignIn={() => setShowNudge(true)}
-        onHistory={() => setShowHistory(true)}
+        onHistory={isSignedIn ? () => setShowHistory(true) : null}
         onRecordings={() => setShowRecordings(true)}
       />
 
       <View style={[styles.workspace, !isMobile && styles.workspaceDesktop]}>
 
+        {/* Map */}
         <View style={[
           styles.mapSection,
           { backgroundColor: colors.bgBase },
@@ -370,6 +362,7 @@ export default function MainScreen() {
           </View>
         </View>
 
+        {/* Chat */}
         <View style={[
           styles.chatSection,
           { backgroundColor: colors.bgSurface },
@@ -401,6 +394,12 @@ export default function MainScreen() {
           unreadCount={unreadCount}
         />
       )}
+
+      {/* Drawers — rendered at root level so they appear above everything */}
+      <RecordingsDrawer
+        visible={showRecordings}
+        onClose={() => setShowRecordings(false)}
+      />
 
       <HistoryDrawer
         visible={showHistory}
