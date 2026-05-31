@@ -244,7 +244,7 @@ export default function MainScreen() {
         autoSave(updated, polygonRef.current, fieldStatsRef.current);
         return updated;
       });
-      if (isSessionActive) pauseClip();
+      if (isSessionActive) setTimeout(() => pauseClip(), 2000);
       if (isMobile && activePanel === 'map') setUnreadCount(c => c + 1);
       if (!isSignedIn && !nudgeShownRef.current) {
         nudgeShownRef.current = true;
@@ -252,7 +252,7 @@ export default function MainScreen() {
       }
     } catch (err) {
       appendMsg('assistant', `⚠️ Could not reach analysis service.\n\nError: ${err.message}`);
-      if (isSessionActive) pauseClip();
+      if (isSessionActive) setTimeout(() => pauseClip(), 2000);
     } finally {
       setIsLoading(false);
       setStreamStatus('');
