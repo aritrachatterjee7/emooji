@@ -7,6 +7,7 @@ import {
 import { Fonts, Radius, Spacing } from '../constants/tokens';
 import { useTheme } from '../context/ThemeContext';
 import { parseMarkdownNative, parseInline } from '../utils/markdown';
+import { useVoice } from '../hooks/useVoice';
 
 function InlineText({ text, style, colors }) {
   const parts = parseInline(text);
@@ -27,9 +28,9 @@ function InlineText({ text, style, colors }) {
 
 function MarkdownSegment({ seg, colors }) {
   if (seg.type === 'spacer') return <View style={{ height: 5 }} />;
-  if (seg.type === 'h2')     return <InlineText text={seg.text} style={{ fontFamily: Fonts.displayBold, fontSize: 14, color: colors.textPrimary, marginVertical: 4 }} colors={colors} />;
-  if (seg.type === 'h3')     return <InlineText text={seg.text} style={{ fontFamily: Fonts.bodyMedium, fontSize: 13, color: colors.textPrimary, marginVertical: 3 }} colors={colors} />;
-  if (seg.type === 'code')   return <Text style={{ fontFamily: Fonts.mono, fontSize: 11, color: colors.textSecondary, backgroundColor: colors.bgOverlay, padding: 8, borderRadius: Radius.sm, marginVertical: 4 }}>{seg.text}</Text>;
+  if (seg.type === 'h2') return <InlineText text={seg.text} style={{ fontFamily: Fonts.displayBold, fontSize: 14, color: colors.textPrimary, marginVertical: 4 }} colors={colors} />;
+  if (seg.type === 'h3') return <InlineText text={seg.text} style={{ fontFamily: Fonts.bodyMedium, fontSize: 13, color: colors.textPrimary, marginVertical: 3 }} colors={colors} />;
+  if (seg.type === 'code') return <Text style={{ fontFamily: Fonts.mono, fontSize: 11, color: colors.textSecondary, backgroundColor: colors.bgOverlay, padding: 8, borderRadius: Radius.sm, marginVertical: 4 }}>{seg.text}</Text>;
   if (seg.type === 'bullet') return (
     <View style={{ flexDirection: 'row', gap: 7, marginVertical: 1 }}>
       <Text style={{ fontFamily: Fonts.mono, fontSize: 14, color: colors.green, lineHeight: 20 }}>·</Text>
@@ -67,7 +68,7 @@ function ThinkingIndicator({ statusText, colors }) {
   );
 }
 
-function ChatMessage({ item, colors }) {
+function ChatMessage({ item, colors, onSpeak, isSpeaking }) {
   const isUser = item.role === 'user';
   return (
     <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
@@ -83,11 +84,25 @@ function ChatMessage({ item, colors }) {
           : { backgroundColor: colors.bubbleAsst, borderColor: colors.border, borderBottomLeftRadius: 4 },
       ]}>
         <BubbleContent content={item.content} colors={colors} />
-        <Text style={[styles.msgTime, { color: colors.textMuted }]}>{item.time}</Text>
+        <View style={styles.msgFooter}>
+          <Text style={[styles.msgTime, { color: colors.textMuted }]}>{item.time}</Text>
+          {/* Speak button on assistant messages */}
+          {!isUser && onSpeak && (
+            <TouchableOpacity
+              onPress={() => onSpeak(item.content)}
+              style={styles.speakBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.speakBtnIcon, { color: colors.textMuted }]}>
+                {isSpeaking ? '⏹' : '🔊'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
       {isUser && (
         <View style={[styles.avatar, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
-          <Text style={styles.avatarEmoji}>👤</Text>
+          <Text style={styles.avatarEmoji}>{item.voice ? '🎤' : '👤'}</Text>
         </View>
       )}
     </View>
@@ -107,7 +122,7 @@ function WelcomeMessage({ colors }) {
         </Text>
         {[
           ['1', 'Tap Polygon or Rectangle and draw over any field on the map'],
-          ['2', 'Ask any question — or tap a quick-analysis chip above'],
+          ['2', 'Ask any question by typing or tapping the 🎤 mic button'],
         ].map(([n, t]) => (
           <View key={n} style={styles.step}>
             <View style={[styles.stepNum, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}>
@@ -147,8 +162,48 @@ export function ChatPanel({
   const { width }   = useWindowDimensions();
   const isMobile    = width < 860;
   const [text, setText] = useState('');
+  const [speakingMsgIdx, setSpeakingMsgIdx] = useState(null);
   const scrollRef = useRef(null);
 
+  // ── Voice hook ─────────────────────────────────────────────────
+  const {
+    supported: voiceSupported,
+    isListening,
+    isSpeaking,
+    voiceEnabled,
+    startListening,
+    stopListening,
+    speak,
+    stopSpeaking,
+    toggleVoice,
+  } = useVoice({
+    onTranscript: (transcript, isFinal) => {
+      setText(transcript);
+      // Auto-send when final transcript received via voice
+      if (isFinal && transcript.trim()) {
+        setTimeout(() => {
+          onSend(transcript.trim());
+          setText('');
+        }, 300);
+      }
+    },
+    onSpeakStart: () => {},
+    onSpeakEnd:   () => setSpeakingMsgIdx(null),
+  });
+
+  // ── Auto-speak last assistant message ──────────────────────────
+  const lastMsgRef = useRef(null);
+  useEffect(() => {
+    if (!voiceEnabled || isLoading) return;
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant') return;
+    if (lastMsg === lastMsgRef.current) return;
+    lastMsgRef.current = lastMsg;
+    setSpeakingMsgIdx(messages.length - 1);
+    speak(lastMsg.content);
+  }, [messages, isLoading, voiceEnabled, speak]);
+
+  // ── Scroll to bottom ───────────────────────────────────────────
   useEffect(() => {
     const raf = requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
@@ -159,9 +214,30 @@ export function ChatPanel({
   const handleSend = useCallback(() => {
     const val = text.trim();
     if (!val || isLoading) return;
+    if (isListening) stopListening();
+    if (isSpeaking) stopSpeaking();
     onSend(val);
     setText('');
-  }, [text, isLoading, onSend]);
+  }, [text, isLoading, isListening, isSpeaking, stopListening, stopSpeaking, onSend]);
+
+  const handleMicPress = useCallback(() => {
+    if (isListening) {
+      stopListening();
+    } else {
+      if (isSpeaking) stopSpeaking();
+      startListening();
+    }
+  }, [isListening, isSpeaking, startListening, stopListening, stopSpeaking]);
+
+  const handleSpeakMsg = useCallback((content, idx) => {
+    if (isSpeaking) {
+      stopSpeaking();
+      setSpeakingMsgIdx(null);
+    } else {
+      setSpeakingMsgIdx(idx);
+      speak(content);
+    }
+  }, [isSpeaking, speak, stopSpeaking]);
 
   const handleKey = Platform.OS === 'web'
     ? (e) => { if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) { e.preventDefault(); handleSend(); } }
@@ -176,6 +252,22 @@ export function ChatPanel({
             {isMobile ? 'Analysis' : 'Field Analysis'}
           </Text>
           <View style={styles.headerBtns}>
+            {/* Voice toggle */}
+            {voiceSupported && (
+              <TouchableOpacity
+                style={[
+                  styles.headerIconBtn,
+                  { backgroundColor: voiceEnabled ? colors.greenTrace : colors.bgOverlay,
+                    borderColor: voiceEnabled ? colors.greenBorder : colors.borderMid }
+                ]}
+                onPress={toggleVoice}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.headerIconBtnText}>
+                  {voiceEnabled ? '🔊' : '🔇'}
+                </Text>
+              </TouchableOpacity>
+            )}
             {/* Session record button */}
             {!isSessionActive ? (
               <TouchableOpacity
@@ -207,7 +299,7 @@ export function ChatPanel({
         </View>
         {!isMobile && (
           <Text style={[styles.sub, { color: colors.textMuted }]}>
-            Draw any field · Ask in plain language · Real satellite data
+            Draw any field · Ask in plain language or by voice · Real satellite data
           </Text>
         )}
       </View>
@@ -215,6 +307,32 @@ export function ChatPanel({
       {/* Recording bar */}
       {isSessionActive && (
         <RecordingBar isRecording={isRecording} colors={colors} />
+      )}
+
+      {/* Voice listening indicator */}
+      {isListening && (
+        <View style={[styles.listeningBar, { backgroundColor: 'rgba(220,38,38,0.08)', borderColor: 'rgba(220,38,38,0.3)' }]}>
+          <View style={[styles.listeningDot, { backgroundColor: '#dc2626' }]} />
+          <Text style={[styles.listeningText, { color: '#dc2626' }]}>
+            Listening… speak your question
+          </Text>
+          <TouchableOpacity onPress={stopListening} style={styles.listeningStop}>
+            <Text style={{ fontFamily: Fonts.mono, fontSize: 11, color: '#dc2626' }}>Stop</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Speaking indicator */}
+      {isSpeaking && (
+        <View style={[styles.listeningBar, { backgroundColor: 'rgba(11,219,110,0.08)', borderColor: colors.greenBorder }]}>
+          <View style={[styles.listeningDot, { backgroundColor: colors.green }]} />
+          <Text style={[styles.listeningText, { color: colors.green }]}>
+            Speaking response…
+          </Text>
+          <TouchableOpacity onPress={stopSpeaking} style={styles.listeningStop}>
+            <Text style={{ fontFamily: Fonts.mono, fontSize: 11, color: colors.green }}>Stop</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* Messages */}
@@ -227,29 +345,62 @@ export function ChatPanel({
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
         <WelcomeMessage colors={colors} />
-        {messages.map((m, i) => <ChatMessage key={i} item={m} colors={colors} />)}
+        {messages.map((m, i) => (
+          <ChatMessage
+            key={i}
+            item={m}
+            colors={colors}
+            onSpeak={m.role === 'assistant' ? (content) => handleSpeakMsg(content, i) : null}
+            isSpeaking={speakingMsgIdx === i && isSpeaking}
+          />
+        ))}
         {isLoading && <ThinkingIndicator statusText={streamStatus} colors={colors} />}
         <View style={{ height: 12 }} />
       </ScrollView>
 
-      {/* Input */}
+      {/* Input area */}
       <View style={[styles.inputArea, { borderTopColor: colors.border, backgroundColor: colors.bgSurface }]}>
-        <View style={[styles.inputRow, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}>
+        {/* Live voice transcript preview */}
+        {isListening && text ? (
+          <Text style={[styles.voicePreview, { color: colors.textMuted, backgroundColor: colors.bgElevated }]}>
+            "{text}"
+          </Text>
+        ) : null}
+        <View style={[styles.inputRow, { backgroundColor: colors.bgElevated, borderColor: isListening ? '#dc2626' : colors.borderMid }]}>
           <TextInput
             style={[styles.input, { color: colors.textPrimary }]}
             value={text}
             onChangeText={setText}
-            placeholder="Ask about this field…"
-            placeholderTextColor={colors.textMuted}
+            placeholder={isListening ? 'Listening…' : 'Ask about this field…'}
+            placeholderTextColor={isListening ? '#dc2626' : colors.textMuted}
             multiline
             maxHeight={100}
             onKeyPress={handleKey}
             blurOnSubmit={false}
+            editable={!isListening}
           />
+
+          {/* Mic button */}
+          {voiceSupported && (
+            <TouchableOpacity
+              style={[
+                styles.micBtn,
+                { backgroundColor: isListening ? '#dc2626' : colors.bgOverlay }
+              ]}
+              onPress={handleMicPress}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.micBtnIcon}>
+                {isListening ? '⏹' : '🎤'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Send button */}
           <TouchableOpacity
             style={[styles.sendBtn, { backgroundColor: (!text.trim() || isLoading) ? colors.bgOverlay : colors.green }]}
             onPress={handleSend}
-            disabled={!text.trim() || isLoading}
+            disabled={(!text.trim() && !isListening) || isLoading}
             activeOpacity={0.8}
           >
             <Text style={[styles.sendIcon, { color: (!text.trim() || isLoading) ? colors.textMuted : '#000' }]}>➤</Text>
@@ -277,41 +428,45 @@ export function ChatPanel({
 
 const styles = StyleSheet.create({
   panel: {
-    flex: 1,
-    flexDirection: 'column',
+    flex: 1, flexDirection: 'column',
     ...Platform.select({ web: { overflow: 'hidden' } }),
   },
-  header:    { flexShrink: 0, padding: Spacing.md, paddingBottom: 9, borderBottomWidth: 1 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
-  headerBtns:{ flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title:     { fontFamily: Fonts.displayBold, fontSize: 15, letterSpacing: -0.3 },
-  sub:       { fontFamily: Fonts.mono, fontSize: 10 },
+  header:     { flexShrink: 0, padding: Spacing.md, paddingBottom: 9, borderBottomWidth: 1 },
+  headerRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
+  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  title:      { fontFamily: Fonts.displayBold, fontSize: 15, letterSpacing: -0.3 },
+  sub:        { fontFamily: Fonts.mono, fontSize: 10 },
+
+  headerIconBtn: {
+    width: 30, height: 30, borderRadius: Radius.full,
+    borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+  },
+  headerIconBtnText: { fontSize: 13 },
 
   sessionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: Radius.md,
-    borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: Radius.md, borderWidth: 1,
   },
   sessionBtnIcon: { fontSize: 10 },
   sessionBtnText: { fontFamily: Fonts.mono, fontSize: 11 },
-
-  clearBtn:     { padding: 6 },
-  clearBtnText: { fontSize: 14 },
+  clearBtn:       { padding: 6 },
+  clearBtnText:   { fontSize: 14 },
 
   recordingBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 7,
-    borderBottomWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: Spacing.md, paddingVertical: 7, borderBottomWidth: 1,
   },
   recordingDot:  { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
   recordingText: { fontFamily: Fonts.mono, fontSize: 11, flex: 1 },
+
+  listeningBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: Spacing.md, paddingVertical: 8, borderBottomWidth: 1,
+  },
+  listeningDot:  { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
+  listeningText: { fontFamily: Fonts.mono, fontSize: 11, flex: 1 },
+  listeningStop: { paddingHorizontal: 8, paddingVertical: 4 },
 
   feed:        { flex: 1, ...Platform.select({ web: { minHeight: 0 } }) },
   feedContent: { padding: Spacing.md, gap: 12 },
@@ -320,7 +475,10 @@ const styles = StyleSheet.create({
   avatar:      { width: 28, height: 28, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   avatarEmoji: { fontSize: 14 },
   bubble:      { maxWidth: '82%', paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16, borderWidth: 1 },
-  msgTime:     { fontFamily: Fonts.mono, fontSize: 9, marginTop: 6 },
+  msgFooter:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  msgTime:     { fontFamily: Fonts.mono, fontSize: 9 },
+  speakBtn:    { padding: 2 },
+  speakBtnIcon:{ fontSize: 12 },
 
   thinkingRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
   pulseDot:     { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
@@ -330,10 +488,22 @@ const styles = StyleSheet.create({
   stepNum:     { width: 18, height: 18, borderRadius: 9, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
   stepNumText: { fontFamily: Fonts.mono, fontSize: 9 },
 
+  voicePreview: {
+    fontFamily: Fonts.body, fontSize: 12, fontStyle: 'italic',
+    paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: Radius.md, marginBottom: 6, marginHorizontal: 2,
+  },
+
   inputArea: { flexShrink: 0, padding: Spacing.sm, borderTopWidth: 1 },
-  inputRow:  { flexDirection: 'row', alignItems: 'flex-end', gap: 8, borderRadius: Radius.xl, borderWidth: 1, paddingLeft: 14, paddingRight: 6, paddingVertical: 6 },
-  input:     { flex: 1, fontFamily: Fonts.body, fontSize: 14, maxHeight: 100, paddingVertical: 2 },
-  sendBtn:   { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  sendIcon:  { fontSize: 14 },
-  footer:    { fontFamily: Fonts.mono, fontSize: 9, textAlign: 'center', marginTop: 6 },
+  inputRow:  {
+    flexDirection: 'row', alignItems: 'flex-end', gap: 6,
+    borderRadius: Radius.xl, borderWidth: 1,
+    paddingLeft: 14, paddingRight: 6, paddingVertical: 6,
+  },
+  input:    { flex: 1, fontFamily: Fonts.body, fontSize: 14, maxHeight: 100, paddingVertical: 2 },
+  micBtn:   { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  micBtnIcon:{ fontSize: 16 },
+  sendBtn:  { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  sendIcon: { fontSize: 14 },
+  footer:   { fontFamily: Fonts.mono, fontSize: 9, textAlign: 'center', marginTop: 6 },
 });
