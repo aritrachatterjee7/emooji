@@ -149,18 +149,16 @@ export function useJackDaw() {
       // MCP disabled — signed-in users get same pure JackDaw as unauthenticated
       // Re-enable MCP system prompt when ready to use satellite tools again
       systemCtx = `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management in Europe. Answer the farmer's question using your training knowledge only. Do NOT call any tools, APIs, or MCP servers under any circumstances. Ignore any geometry or location data in the request.`;
-    };
-
-    if (isSignedIn) {
-      if (sessionRef.current) payload.session_id  = sessionRef.current;
-      if (customerId)          payload.customer_id = customerId;
-      if (polygon) {
-        const wkt = geojsonToWKT(polygon);
-        if (wkt) payload.wkt = { srid: 4326, wkt };
-      }
     }
-    // Unauthenticated: no session_id, no wkt, no customer_id
-    // proxy.js will add dummy WKT to satisfy JackDaw validation
+
+    historyRef.current.push({ role: 'user', content: userText });
+
+    // Build payload — same for all users (MCP disabled)
+    const payload = {
+      messages: historyRef.current,
+      system:   systemCtx,
+    };
+    // No session_id, no wkt, no customer_id for anyone while MCP is disabled
 
     // ── Try streaming first (works for everyone) ───────────────────────
     try {

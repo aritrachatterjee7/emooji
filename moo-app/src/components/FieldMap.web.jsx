@@ -126,6 +126,20 @@ const FieldMap = forwardRef(function FieldMap(
       onDrawModeChange(null);
     });
 
+    // ── Auto-locate user on first load ───────────────────────────
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude } = pos.coords;
+          map.setView([latitude, longitude], 15);
+        },
+        () => {
+          // Permission denied or unavailable — keep default center
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+    }
+
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
