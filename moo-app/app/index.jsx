@@ -389,7 +389,13 @@ export default function MainScreen() {
   const handleLoadSession = useCallback((session) => {
     sessionIdRef.current = session.local ? null : session.id;
     setMessages(session.messages || []);
-    if (session.polygon) setPolygon(session.polygon);
+
+    if (session.polygon) {
+      setPolygon(session.polygon);
+      // Restore polygon on Leaflet map
+      fieldMapRef.current?.loadField(session.polygon);
+    }
+
     if (session.field_stats) {
       try {
         setFieldStats(
@@ -399,6 +405,7 @@ export default function MainScreen() {
         );
       } catch {}
     }
+
     if (isMobile) setActivePanel('chat');
   }, [isMobile]);
 

@@ -15,7 +15,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-const DRAW_STYLE = { color: '#0bdb6e', fillColor: '#0bdb6e', fillOpacity: 0.12, weight: 2 };
+const DRAW_STYLE = { color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.15, weight: 2.5 };
 
 function approxArea(latlngs) {
   if (!latlngs || latlngs.length < 3) return 0;
@@ -70,6 +70,28 @@ const FieldMap = forwardRef(function FieldMap(
       }
       setIsDrawing(false);
       setVertexCount(0);
+    },
+    loadField: (geojsonPolygon) => {
+      if (!drawnRef.current || !mapRef.current) return;
+      try {
+        const geom = typeof geojsonPolygon === 'string'
+          ? JSON.parse(geojsonPolygon) : geojsonPolygon;
+        // Clear existing layers
+        drawnRef.current.clearLayers();
+        // Create Leaflet layer from GeoJSON
+        const layer = L.geoJSON(
+          { type: 'Feature', geometry: geom },
+          { style: DRAW_STYLE }
+        );
+        layer.eachLayer(l => drawnRef.current.addLayer(l));
+        // Fit map to polygon bounds
+        const bounds = layer.getBounds();
+        if (bounds.isValid()) {
+          mapRef.current.fitBounds(bounds, { padding: [40, 40] });
+        }
+      } catch (e) {
+        console.error('loadField error:', e);
+      }
     },
   }));
 
