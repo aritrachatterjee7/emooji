@@ -142,23 +142,26 @@ export function useJackDaw() {
     isSignedIn = false,
   ) => {
 
-    let systemCtx;
-    if (!isSignedIn) {
-      systemCtx = `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management in Europe. Answer the farmer's question using your training knowledge only. Do NOT call any tools, APIs, or MCP servers under any circumstances. Ignore any geometry or location data in the request.`;
-    } else {
-      // MCP disabled — signed-in users get same pure JackDaw as unauthenticated
-      // Re-enable MCP system prompt when ready to use satellite tools again
-      systemCtx = `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management in Europe. Answer the farmer's question using your training knowledge only. Do NOT call any tools, APIs, or MCP servers under any circumstances. Ignore any geometry or location data in the request.`;
-    }
+    // No system prompt — let JackDaw behave exactly as its native interface
+    // System prompts were blocking JackDaw's built-in GeoRAG tools
+    const systemCtx = undefined;
 
     historyRef.current.push({ role: 'user', content: userText });
 
-    // Build payload — same for all users (MCP disabled)
-    const payload = {
-      messages: historyRef.current,
-      system:   systemCtx,
-    };
-    // No session_id, no wkt, no customer_id for anyone while MCP is disabled
+    // Build payload — no system prompt so JackDaw behaves like its native interface
+    const payload = { messages: historyRef.current };
+    // system prompt intentionally omitted — lets JackDaw use its built-in tools freely
+
+    // Send WKT if polygon drawn so JackDaw can use the geometry
+    if (polygon) {
+      const wkt = geojsonToWKT(polygon);
+      if (wkt) payload.wkt = { srid: 4326, wkt };
+    }
+
+    // Save session_id for conversation continuity when signed in
+    if (isSignedIn && sessionRef.current) {
+      payload.session_id = sessionRef.current;
+    }
 
     // ── Try streaming first (works for everyone) ───────────────────────
     try {
