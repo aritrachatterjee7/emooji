@@ -158,7 +158,6 @@ export default function MainScreen() {
   // ── Modals & Drawers ───────────────────────────────────────────
   const [showNudge,      setShowNudge]      = useState(false);
   const [showLocationTip, setShowLocationTip] = useState(false);
-  const [showLocationTip, setShowLocationTip] = useState(false);
   const [showHistory,    setShowHistory]    = useState(false);
   const [showRecordings, setShowRecordings] = useState(false);
   const nudgeShownRef = useRef(false);
