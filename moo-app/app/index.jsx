@@ -165,7 +165,8 @@ export default function MainScreen() {
     prevUserRef.current  = user;
 
     if (wasSignedOut && isNowSignedIn) {
-      initMCP();
+      // MCP disabled for now — using pure JackDaw for all users
+      // initMCP(); // re-enable when MCP tools are ready
       setShowNudge(false);
       migrateLocalToRemote(user.uid).catch(() => {});
     }

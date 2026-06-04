@@ -146,29 +146,9 @@ export function useJackDaw() {
     if (!isSignedIn) {
       systemCtx = `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management in Europe. Answer the farmer's question using your training knowledge only. Do NOT call any tools, APIs, or MCP servers under any circumstances. Ignore any geometry or location data in the request.`;
     } else {
-      systemCtx = polygon
-        ? `You are an expert agricultural and environmental analyst with access to MCP satellite tools. The farmer has drawn a field polygon on the map.
-
-CRITICAL: You MUST use these specific MCP tools for ALL data requests. NEVER use georag_discover_sources, georag_query_sources or any other built-in tools when these MCP tools are available:
-- get_ndvi_for_area — for ANY vegetation, NDVI, greenness, crop health questions
-- get_weather_and_heat_stress — for ANY weather, rainfall, temperature, climate questions
-- get_terrain_info — for slope, elevation, terrain questions
-- get_erosion_risk — for erosion, soil loss questions
-- get_land_cover — for land use, land cover questions
-- check_natura2000_overlap — for protected areas, nature zones
-- get_grazing_suitability — for grazing, pasture suitability
-
-Use this GeoJSON geometry in ALL MCP tool calls: ${polygon}
-
-Never fabricate data. Always call the appropriate MCP tool listed above first.${customerId ? `\n\nCustomer ID: ${customerId}. Additional tools: get_my_paddocks, get_paddock_rating, get_animals_in_paddock, get_animal_track, get_ungrazed_paddocks, get_low_ndvi_paddocks, recommend_paddock_for_herd_move.` : ''}`
-        : `You are an expert agricultural analyst with access to real satellite MCP tools. No polygon drawn yet — ask the farmer to draw a field on the map first.${customerId ? `\n\nCustomer ID: ${customerId}.` : ''}`;    }
-
-    historyRef.current.push({ role: 'user', content: userText });
-
-    // Build payload — signed-in gets session + WKT, unauthenticated gets neither
-    const payload = {
-      messages: historyRef.current,
-      system:   systemCtx,
+      // MCP disabled — signed-in users get same pure JackDaw as unauthenticated
+      // Re-enable MCP system prompt when ready to use satellite tools again
+      systemCtx = `You are an expert agricultural analyst with deep knowledge of farming, agronomy, and land management in Europe. Answer the farmer's question using your training knowledge only. Do NOT call any tools, APIs, or MCP servers under any circumstances. Ignore any geometry or location data in the request.`;
     };
 
     if (isSignedIn) {
