@@ -63,6 +63,61 @@ function AppSplash({ visible, progress, status }) {
   );
 }
 
+// ── Location tip modal ────────────────────────────────────────────────────
+function LocationTipModal({ colors, onClose }) {
+  return (
+    <View style={locationStyles.overlay} pointerEvents="box-none">
+      <View style={[locationStyles.card, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
+        <Text style={locationStyles.icon}>📍</Text>
+        <Text style={[locationStyles.title, { color: colors.textPrimary }]}>Enable Location</Text>
+        <Text style={[locationStyles.body, { color: colors.textMuted }]}>
+          Allow location access so the map centres on your area automatically — making it faster to draw your field and get satellite analysis.
+        </Text>
+        <Text style={[locationStyles.hint, { color: colors.textMuted }]}>
+          To enable: tap the lock icon in your browser address bar → Site settings → Location → Allow
+        </Text>
+        <TouchableOpacity
+          style={[locationStyles.btn, { backgroundColor: colors.green }]}
+          onPress={onClose}
+        >
+          <Text style={locationStyles.btnText}>Got it</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const locationStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 500,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    padding: 16,
+    paddingBottom: 40,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'center',
+    gap: 10,
+    ...Platform.select({
+      web: { boxShadow: '0 8px 32px rgba(0,0,0,0.3)' },
+      ios: { shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+      android: { elevation: 16 },
+    }),
+  },
+  icon:  { fontSize: 36 },
+  title: { fontFamily: Fonts.displayBold, fontSize: 18, textAlign: 'center' },
+  body:  { fontFamily: Fonts.body, fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  hint:  { fontFamily: Fonts.mono, fontSize: 10, textAlign: 'center', lineHeight: 16, opacity: 0.7 },
+  btn:   { borderRadius: 12, paddingHorizontal: 32, paddingVertical: 12, marginTop: 4 },
+  btnText: { fontFamily: Fonts.displayBold, fontSize: 14, color: '#07090e' },
+});
+
 export default function MainScreen() {
   const { width }  = useWindowDimensions();
   const isMobile   = width < MOBILE_BREAKPOINT;
@@ -102,6 +157,8 @@ export default function MainScreen() {
 
   // ── Modals & Drawers ───────────────────────────────────────────
   const [showNudge,      setShowNudge]      = useState(false);
+  const [showLocationTip, setShowLocationTip] = useState(false);
+  const [showLocationTip, setShowLocationTip] = useState(false);
   const [showHistory,    setShowHistory]    = useState(false);
   const [showRecordings, setShowRecordings] = useState(false);
   const nudgeShownRef = useRef(false);
@@ -147,6 +204,36 @@ export default function MainScreen() {
   useEffect(() => { messagesRef.current  = messages;   }, [messages]);
   useEffect(() => { polygonRef.current   = polygon;    }, [polygon]);
   useEffect(() => { fieldStatsRef.current = fieldStats; }, [fieldStats]);
+
+  // ── Request location permission on first load ─────────────────
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      () => {}, // success — map already handles centering
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          // Show tip after splash is gone
+          setTimeout(() => setShowLocationTip(true), 1500);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  }, []);
+
+  // ── Request location permission on app load ───────────────────
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      () => {},
+      (err) => {
+        if (err.code === 1) { // PERMISSION_DENIED
+          setTimeout(() => setShowLocationTip(true), 1800);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }, []);
 
   // ── Init ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -260,7 +347,24 @@ export default function MainScreen() {
     }
   }, [sendMessage, customerId, isSignedIn, isMobile, activePanel, autoSave, appendMsg, isSessionActive, startClip, pauseClip]);
 
-  const handleSend = useCallback((text) => { doSend(text); }, [doSend]);
+  const handleSend = useCallback((text) => {
+    if (!polygon) {
+      // No field drawn — show inline prompt instead of sending
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: text, time: now() },
+        {
+          role: 'assistant',
+          content: "🗺️ **Please draw a field first.**\n\nTap **Polygon** or **Rectangle** in the toolbar above the map, draw over any field in Europe, and then ask your question — I'll analyse that specific area using real satellite data.",
+          time: now(),
+        },
+      ]);
+      // Switch to chat on mobile so user sees the message
+      if (isMobile) setActivePanel('chat');
+      return;
+    }
+    doSend(text);
+  }, [doSend, polygon, isMobile]);
 
   // ── Recording ──────────────────────────────────────────────────
   const handleStartSession = useCallback(() => {
@@ -409,6 +513,19 @@ export default function MainScreen() {
         onLoadSession={handleLoadSession}
         onNewChat={handleClearChat}
       />
+
+      {/* Location permission tip */}
+      {showLocationTip && (
+        <LocationTip onClose={() => setShowLocationTip(false)} colors={colors} />
+      )}
+
+      {/* Location tip — shown when user denies location permission */}
+      {showLocationTip && (
+        <LocationTipModal
+          colors={colors}
+          onClose={() => setShowLocationTip(false)}
+        />
+      )}
 
       <NudgeModal
         visible={showNudge}

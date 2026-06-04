@@ -157,6 +157,7 @@ function RecordingBar({ isRecording, colors }) {
 export function ChatPanel({
   messages, isLoading, streamStatus, onSend, onClearChat,
   isSessionActive, isRecording, onStartSession, onEndSession,
+  hasField,
 }) {
   const { colors }  = useTheme();
   const { width }   = useWindowDimensions();
@@ -358,6 +359,16 @@ export function ChatPanel({
         <View style={{ height: 12 }} />
       </ScrollView>
 
+      {/* No field banner */}
+      {!hasField && (
+        <View style={[styles.noFieldBanner, { backgroundColor: colors.bgElevated, borderTopColor: colors.border }]}>
+          <Text style={styles.noFieldEmoji}>🗺️</Text>
+          <Text style={[styles.noFieldText, { color: colors.textMuted }]}>
+            Draw a field on the map to start asking questions
+          </Text>
+        </View>
+      )}
+
       {/* Input area */}
       <View style={[styles.inputArea, { borderTopColor: colors.border, backgroundColor: colors.bgSurface }]}>
         {/* Live voice transcript preview */}
@@ -368,16 +379,22 @@ export function ChatPanel({
         ) : null}
         <View style={[styles.inputRow, { backgroundColor: colors.bgElevated, borderColor: isListening ? '#dc2626' : colors.borderMid }]}>
           <TextInput
-            style={[styles.input, { color: colors.textPrimary }]}
+            style={[styles.input, { color: hasField ? colors.textPrimary : colors.textMuted }]}
             value={text}
             onChangeText={setText}
-            placeholder={isListening ? 'Listening…' : 'Ask about this field…'}
-            placeholderTextColor={isListening ? '#dc2626' : colors.textMuted}
+            placeholder={
+              !hasField
+                ? '🗺️ Draw a field on the map to begin…'
+                : isListening
+                  ? 'Listening…'
+                  : 'Ask about this field…'
+            }
+            placeholderTextColor={!hasField ? colors.textMuted : isListening ? '#dc2626' : colors.textMuted}
             multiline
             maxHeight={100}
             onKeyPress={handleKey}
             blurOnSubmit={false}
-            editable={!isListening}
+            editable={!!hasField && !isListening}
           />
 
           {/* Mic button */}
@@ -385,9 +402,10 @@ export function ChatPanel({
             <TouchableOpacity
               style={[
                 styles.micBtn,
-                { backgroundColor: isListening ? '#dc2626' : colors.bgOverlay }
+                { backgroundColor: isListening ? '#dc2626' : colors.bgOverlay,
+                  opacity: hasField ? 1 : 0.4 }
               ]}
-              onPress={handleMicPress}
+              onPress={hasField ? handleMicPress : undefined}
               activeOpacity={0.8}
             >
               <Text style={styles.micBtnIcon}>
@@ -398,9 +416,9 @@ export function ChatPanel({
 
           {/* Send button */}
           <TouchableOpacity
-            style={[styles.sendBtn, { backgroundColor: (!text.trim() || isLoading) ? colors.bgOverlay : colors.green }]}
+            style={[styles.sendBtn, { backgroundColor: (hasField && text.trim() && !isLoading) ? colors.green : colors.bgOverlay }]}
             onPress={handleSend}
-            disabled={(!text.trim() && !isListening) || isLoading}
+            disabled={!hasField || (!text.trim() && !isListening) || isLoading}
             activeOpacity={0.8}
           >
             <Text style={[styles.sendIcon, { color: (!text.trim() || isLoading) ? colors.textMuted : '#000' }]}>➤</Text>
@@ -506,4 +524,14 @@ const styles = StyleSheet.create({
   sendBtn:  { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   sendIcon: { fontSize: 14 },
   footer:   { fontFamily: Fonts.mono, fontSize: 9, textAlign: 'center', marginTop: 6 },
+  noFieldBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+  },
+  noFieldEmoji: { fontSize: 16 },
+  noFieldText:  { fontFamily: Fonts.mono, fontSize: 11, flex: 1 },
 });
