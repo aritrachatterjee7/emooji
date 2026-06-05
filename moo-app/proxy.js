@@ -123,8 +123,18 @@ function httpsPostStream(urlStr, body, headers, onResponse) {
   });
 }
 
+// ── Token cache — avoids re-fetching on every request ─────────────────────
+let cachedToken     = null;
+let tokenExpiresAt  = 0;
+
 async function fetchAccessToken(retries = 3) {
   if (!CLIENT_ID || !CLIENT_SECRET) throw new Error('Missing credentials');
+
+  // Return cached token if still valid (with 60s buffer)
+  if (cachedToken && Date.now() < tokenExpiresAt - 60000) {
+    return cachedToken;
+  }
+
   const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
   const formBody = new URLSearchParams({
     grant_type:    'client_credentials',
@@ -141,16 +151,27 @@ async function fetchAccessToken(retries = 3) {
         'Accept':         'application/json',
       });
       if (result.status >= 200 && result.status < 300) {
-        return JSON.parse(result.body).access_token;
+        const data = JSON.parse(result.body);
+        cachedToken    = data.access_token;
+        tokenExpiresAt = Date.now() + (data.expires_in || 3600) * 1000;
+        console.log('✅ Token fetched and cached');
+        return cachedToken;
       }
       console.warn(`Token attempt ${attempt}/${retries} failed: ${result.status}`);
-      if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * attempt));
+      if (attempt < retries) await new Promise(r => setTimeout(r, 2000 * attempt));
     } catch (err) {
       console.warn(`Token attempt ${attempt}/${retries} error: ${err.message}`);
-      if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * attempt));
+      if (attempt < retries) await new Promise(r => setTimeout(r, 2000 * attempt));
     }
   }
-  throw new Error('Token fetch failed after ' + retries + ' attempts');
+
+  // If we have a stale cached token, use it as last resort
+  if (cachedToken) {
+    console.warn('Using stale cached token as fallback');
+    return cachedToken;
+  }
+
+  throw new Error('Token fetch failed after ' + retries + ' attempts — PoliRuralPlus server may be down');
 }
 
 app.get('/api/health', (req, res) => res.json({
