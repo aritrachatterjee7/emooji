@@ -123,7 +123,7 @@ function httpsPostStream(urlStr, body, headers, onResponse) {
   });
 }
 
-async function fetchAccessToken() {
+async function fetchAccessToken(retries = 3) {
   if (!CLIENT_ID || !CLIENT_SECRET) throw new Error('Missing credentials');
   const authHeader = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
   const formBody = new URLSearchParams({
@@ -131,14 +131,26 @@ async function fetchAccessToken() {
     client_id:     CLIENT_ID,
     client_secret: CLIENT_SECRET,
   }).toString();
-  const result = await httpsPost(POLIRURAL_TOKEN_URL, formBody, {
-    'Authorization':  authHeader,
-    'Content-Type':   'application/x-www-form-urlencoded',
-    'Content-Length': Buffer.byteLength(formBody),
-    'Accept':         'application/json',
-  });
-  if (result.status < 200 || result.status >= 300) throw new Error(`Token ${result.status}: ${result.body}`);
-  return JSON.parse(result.body).access_token;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const result = await httpsPost(POLIRURAL_TOKEN_URL, formBody, {
+        'Authorization':  authHeader,
+        'Content-Type':   'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(formBody),
+        'Accept':         'application/json',
+      });
+      if (result.status >= 200 && result.status < 300) {
+        return JSON.parse(result.body).access_token;
+      }
+      console.warn(`Token attempt ${attempt}/${retries} failed: ${result.status}`);
+      if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * attempt));
+    } catch (err) {
+      console.warn(`Token attempt ${attempt}/${retries} error: ${err.message}`);
+      if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+  }
+  throw new Error('Token fetch failed after ' + retries + ' attempts');
 }
 
 app.get('/api/health', (req, res) => res.json({
@@ -191,13 +203,13 @@ app.delete('/api/mcp/all', async (req, res) => {
 app.post('/api/chat', async (req, res) => {
   try {
     const token = await fetchAccessToken();
-    const sanitized = {
-      messages: req.body.messages,
-      wkt:      req.body.wkt || DUMMY_WKT,
-    };
+    // Only send wkt if explicitly provided — no dummy WKT
+    // Dummy WKT caused JackDaw to return weather for wrong location
+    const sanitized = { messages: req.body.messages };
     if (req.body.system)      sanitized.system      = req.body.system;
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
+    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
@@ -220,13 +232,12 @@ app.post('/api/chat', async (req, res) => {
 app.post('/api/chat/stream', async (req, res) => {
   try {
     const token = await fetchAccessToken();
-    const sanitized = {
-      messages: req.body.messages,
-      wkt:      req.body.wkt || DUMMY_WKT,
-    };
+    // Only send wkt if explicitly provided — no dummy WKT
+    const sanitized = { messages: req.body.messages };
     if (req.body.system)      sanitized.system      = req.body.system;
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
+    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
@@ -383,5 +394,14 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'not_found' });
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
+
+// ── Keep-alive ping — prevents Render free tier spin-down ─────────────────
+if (process.env.RENDER_EXTERNAL_URL) {
+  const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+  setInterval(() => {
+    require('https').get(`${SELF_URL}/api/health`, () => {}).on('error', () => {});
+    console.log('Keep-alive ping sent');
+  }, 10 * 60 * 1000); // every 10 minutes
+}
 
 app.listen(PORT, '0.0.0.0', () => console.log(`✅ Proxy on port ${PORT}`));
