@@ -203,13 +203,13 @@ app.delete('/api/mcp/all', async (req, res) => {
 app.post('/api/chat', async (req, res) => {
   try {
     const token = await fetchAccessToken();
-    // Only send wkt if explicitly provided — no dummy WKT
-    // Dummy WKT caused JackDaw to return weather for wrong location
+    // Always send WKT — real polygon from client or dummy fallback
+    // JackDaw requires geometry to use its built-in climate/NDVI/terrain tools
     const sanitized = { messages: req.body.messages };
     if (req.body.system)      sanitized.system      = req.body.system;
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
-    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
+    sanitized.wkt = req.body.wkt || DUMMY_WKT;
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
@@ -232,12 +232,13 @@ app.post('/api/chat', async (req, res) => {
 app.post('/api/chat/stream', async (req, res) => {
   try {
     const token = await fetchAccessToken();
-    // Only send wkt if explicitly provided — no dummy WKT
+    // Always send WKT — use real polygon if drawn, dummy WKT if not
+    const DUMMY_WKT_S = { srid: 4326, wkt: 'POLYGON ((10.0 50.0, 10.1 50.0, 10.1 50.1, 10.0 50.1, 10.0 50.0))' };
     const sanitized = { messages: req.body.messages };
     if (req.body.system)      sanitized.system      = req.body.system;
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
-    if (req.body.wkt)         sanitized.wkt         = req.body.wkt;
+    sanitized.wkt = req.body.wkt || DUMMY_WKT_S;
 
     const body = JSON.stringify(sanitized);
     const hdrs = {
