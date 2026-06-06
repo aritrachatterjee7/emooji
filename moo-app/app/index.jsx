@@ -351,6 +351,7 @@ export default function MainScreen() {
         customerId,
         (status) => setStreamStatus(status),
         isSignedIn,
+        sessionIdRef.current, // pass sessions_full UUID for thinking trace storage
       );
       const assistantMsg = { role: 'assistant', content: reply, time: now() };
       setMessages(prev => {

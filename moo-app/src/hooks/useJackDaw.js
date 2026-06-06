@@ -140,6 +140,7 @@ export function useJackDaw() {
     customerId = null,
     onProgress = null,
     isSignedIn = false,
+    fullSessionId = null,
   ) => {
 
     // No system prompt — let JackDaw behave exactly as its native interface
@@ -149,8 +150,6 @@ export function useJackDaw() {
     historyRef.current.push({ role: 'user', content: userText });
 
     // Build payload — no system prompt, JackDaw behaves like its native interface
-    // Always send WKT — real polygon if drawn, dummy if not
-    // JackDaw REQUIRES geometry to use its built-in climate/NDVI/terrain tools
     const DUMMY_WKT = {
       srid: 4326,
       wkt: 'POLYGON ((10.0 50.0, 10.1 50.0, 10.1 50.1, 10.0 50.1, 10.0 50.0))',
@@ -160,24 +159,21 @@ export function useJackDaw() {
 
     if (polygon) {
       const wkt = geojsonToWKT(polygon);
-      if (wkt) {
-        payload.wkt = { srid: 4326, wkt };
-      } else {
-        payload.wkt = DUMMY_WKT;
-      }
+      payload.wkt     = wkt ? { srid: 4326, wkt } : DUMMY_WKT;
+      payload.polygon = polygon; // send raw polygon for DB storage
     } else {
       payload.wkt = DUMMY_WKT;
     }
 
     // Save session_id for conversation continuity
-    if (sessionRef.current) {
-      payload.session_id = sessionRef.current;
-    }
+    if (sessionRef.current) payload.session_id = sessionRef.current;
 
     // ── Try streaming first (works for everyone) ───────────────────────
     try {
       const streamHeaders = { 'Content-Type': 'application/json' };
-      if (sessionRef.current) streamHeaders['X-Session-Id'] = sessionRef.current;
+      // Use fullSessionId (from sessions_full) for thinking trace storage
+      if (fullSessionId)      streamHeaders['X-Session-Id'] = fullSessionId;
+      else if (sessionRef.current) streamHeaders['X-Session-Id'] = sessionRef.current;
       if (customerId)         streamHeaders['X-User-Id']    = customerId;
 
       const res = await fetch(CFG.proxy.streamUrl, {
