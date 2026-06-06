@@ -21,9 +21,9 @@ const DUMMY_WKT = {
   wkt: 'POLYGON ((10.0 50.0, 10.1 50.0, 10.1 50.1, 10.0 50.1, 10.0 50.0))',
 };
 
+// ── PostgreSQL ─────────────────────────────────────────────────────────────
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL ||
-    'postgresql://emooji_db_user:yvEqiXeKYGME06DTCzGnMWlPEjA68Nkd@dpg-d7q63upugtpc73anvsqg-a.oregon-postgres.render.com/emooji_db',
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
@@ -65,6 +65,19 @@ async function initDB() {
       );
       CREATE INDEX IF NOT EXISTS idx_traces_session_id ON thinking_traces(session_id);
       CREATE INDEX IF NOT EXISTS idx_traces_user_id ON thinking_traces(user_id);
+
+      CREATE TABLE IF NOT EXISTS sessions_full (
+        id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id          TEXT,
+        is_authenticated BOOLEAN DEFAULT FALSE,
+        title            TEXT DEFAULT 'New Chat',
+        polygon          JSONB,
+        field_stats      JSONB,
+        messages         JSONB DEFAULT '[]',
+        created_at       TIMESTAMPTZ DEFAULT NOW(),
+        updated_at       TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_full_user_id ON sessions_full(user_id);
     `);
     console.log('✅ DB tables ready');
   } catch (err) {
@@ -81,7 +94,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Id');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Id, X-Session-Id');
   res.setHeader('Cross-Origin-Opener-Policy',   'same-origin-allow-popups');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -108,13 +121,8 @@ function httpsRequest(method, urlStr, body, headers) {
   });
 }
 
-function httpsPost(urlStr, body, headers) {
-  return httpsRequest('POST', urlStr, body, headers);
-}
-
-function httpsDelete(urlStr, headers) {
-  return httpsRequest('DELETE', urlStr, null, headers);
-}
+function httpsPost(urlStr, body, headers) { return httpsRequest('POST', urlStr, body, headers); }
+function httpsDelete(urlStr, headers)     { return httpsRequest('DELETE', urlStr, null, headers); }
 
 function httpsPostStream(urlStr, body, headers, onResponse) {
   return new Promise((resolve, reject) => {
@@ -137,6 +145,7 @@ function httpsPostStream(urlStr, body, headers, onResponse) {
   });
 }
 
+// ── Token cache ────────────────────────────────────────────────────────────
 let cachedToken    = null;
 let tokenExpiresAt = 0;
 
@@ -160,7 +169,7 @@ async function fetchAccessToken(retries = 3) {
         'Accept':         'application/json',
       });
       if (result.status >= 200 && result.status < 300) {
-        const data = JSON.parse(result.body);
+        const data     = JSON.parse(result.body);
         cachedToken    = data.access_token;
         tokenExpiresAt = Date.now() + (data.expires_in || 3600) * 1000;
         console.log('✅ Token fetched and cached');
@@ -173,11 +182,11 @@ async function fetchAccessToken(retries = 3) {
       if (attempt < retries) await new Promise(r => setTimeout(r, 2000 * attempt));
     }
   }
-
-  if (cachedToken) { console.warn('Using stale cached token as fallback'); return cachedToken; }
+  if (cachedToken) { console.warn('Using stale cached token'); return cachedToken; }
   throw new Error('Token fetch failed after ' + retries + ' attempts');
 }
 
+// ── Health ─────────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({
   status: 'ok', credsSet: !!(CLIENT_ID && CLIENT_SECRET), timestamp: new Date().toISOString(),
 }));
@@ -190,6 +199,7 @@ app.post('/api/token', async (req, res) => {
   }
 });
 
+// ── MCP ────────────────────────────────────────────────────────────────────
 app.post('/api/mcp/connect', async (req, res) => {
   try {
     const token = await fetchAccessToken();
@@ -216,6 +226,7 @@ app.delete('/api/mcp/all', async (req, res) => {
   }
 });
 
+// ── Chat buffered ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   try {
     const token = await fetchAccessToken();
@@ -224,8 +235,8 @@ app.post('/api/chat', async (req, res) => {
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
     sanitized.wkt = req.body.wkt || DUMMY_WKT;
-    const body = JSON.stringify(sanitized);
-    const hdrs = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'Accept': 'application/json' };
+    const body   = JSON.stringify(sanitized);
+    const hdrs   = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'Accept': 'application/json' };
     const result = await httpsPost(`${JACKDAW_BASE}/chat/v2/chat`, body, hdrs);
     res.status(result.status);
     if (result.headers['content-type']) res.set('Content-Type', result.headers['content-type']);
@@ -235,6 +246,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// ── Chat stream — captures thinking trace and saves to sessions_full ───────
 app.post('/api/chat/stream', async (req, res) => {
   try {
     const token = await fetchAccessToken();
@@ -243,6 +255,7 @@ app.post('/api/chat/stream', async (req, res) => {
     if (req.body.thread_id)   sanitized.thread_id   = req.body.thread_id;
     if (req.body.customer_id) sanitized.customer_id = req.body.customer_id;
     sanitized.wkt = req.body.wkt || DUMMY_WKT;
+
     const body = JSON.stringify(sanitized);
     const hdrs = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'Accept': 'text/event-stream' };
 
@@ -251,27 +264,38 @@ app.post('/api/chat/stream', async (req, res) => {
     res.setHeader('Connection',    'keep-alive');
     res.flushHeaders();
 
-    const startTime   = Date.now();
-    const traceEvents = [];
-    const toolsUsed   = new Set();
-    let   sseBuffer   = '';
-    let   finalAnswer = '';
-    const msgs      = req.body.messages || [];
-    const question  = msgs.filter(m => m.role === 'user').slice(-1)[0]?.content || '';
-    const sessionId = req.body.thread_id || req.body.session_id || null;
-    const userId    = req.headers['x-user-id'] || null;
-    const msgIdx    = msgs.filter(m => m.role === 'user').length;
+    // ── Collect trace metadata ─────────────────────────────────────
+    const startTime     = Date.now();
+    const traceEvents   = [];
+    const toolsUsed     = new Set();
+    let   sseBuffer     = '';
+    let   finalAnswer   = '';
+
+    const msgs            = req.body.messages || [];
+    const lastUserMsg     = msgs.filter(m => m.role === 'user').slice(-1)[0];
+    const question        = lastUserMsg?.content || '';
+    const questionTime    = lastUserMsg?.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Session metadata from headers
+    const clientSessionId = req.headers['x-session-id'] || null;
+    const userId          = req.headers['x-user-id']    || null;
+    const isAuth          = !!userId;
+    const polygon         = req.body.polygon    || null;
+    const fieldStats      = req.body.field_stats || null;
 
     await httpsPostStream(`${JACKDAW_BASE}/chat/v2/chat/stream`, body, hdrs, (incoming) => {
       incoming.on('data', chunk => {
         res.write(chunk);
+
+        // Parse SSE to collect thinking trace
         sseBuffer += chunk.toString();
         const lines = sseBuffer.split('\n');
         sseBuffer   = lines.pop();
         let eventType = null, dataLine = null;
+
         for (const line of lines) {
-          if (line.startsWith('event:'))      { eventType = line.slice(6).trim(); }
-          else if (line.startsWith('data:'))  { dataLine  = line.slice(5).trim(); }
+          if (line.startsWith('event:'))     { eventType = line.slice(6).trim(); }
+          else if (line.startsWith('data:')) { dataLine  = line.slice(5).trim(); }
           else if (line === '' && eventType && dataLine) {
             try {
               const parsed = JSON.parse(dataLine);
@@ -284,7 +308,9 @@ app.post('/api/chat/stream', async (req, res) => {
                   if (match) toolsUsed.add(match[1]);
                 }
               }
-              if (eventType === 'final') finalAnswer = parsed.content || parsed.message || '';
+              if (eventType === 'final') {
+                finalAnswer = parsed.content || parsed.message || '';
+              }
             } catch {}
             eventType = null; dataLine = null;
           }
@@ -293,18 +319,90 @@ app.post('/api/chat/stream', async (req, res) => {
 
       incoming.on('end', async () => {
         res.end();
-        if (traceEvents.length > 0) {
-          try {
-            await pool.query(
-              `INSERT INTO thinking_traces (session_id, user_id, message_idx, question, answer, events, tools_used, duration_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-              [sessionId, userId, msgIdx, question.slice(0,500), finalAnswer.slice(0,2000), JSON.stringify(traceEvents), JSON.stringify([...toolsUsed]), Date.now() - startTime]
+
+        // ── Build the two new message objects with embedded trace ──
+        const userMessage = {
+          role:    'user',
+          content: question,
+          time:    questionTime,
+        };
+
+        const assistantMessage = {
+          role:          'assistant',
+          content:       finalAnswer,
+          time:          new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          thinking_trace: traceEvents,
+          tools_used:    [...toolsUsed],
+          duration_ms:   Date.now() - startTime,
+        };
+
+        // ── Upsert sessions_full ───────────────────────────────────
+        try {
+          if (clientSessionId) {
+            // Try to update existing session
+            const existing = await pool.query(
+              `SELECT id, messages FROM sessions_full WHERE id = $1`,
+              [clientSessionId]
             );
-            console.log(`✅ Trace saved — ${traceEvents.length} events, tools: [${[...toolsUsed].join(', ')}]`);
-          } catch (dbErr) { console.error('Trace save failed:', dbErr.message); }
+
+            if (existing.rows.length > 0) {
+              // Append new messages to existing session
+              const existingMessages = existing.rows[0].messages || [];
+              const updatedMessages  = [...existingMessages, userMessage, assistantMessage];
+              const autoTitle = updatedMessages.find(m => m.role === 'user')?.content?.slice(0, 60) || 'New Chat';
+
+              await pool.query(
+                `UPDATE sessions_full
+                 SET messages = $1, updated_at = NOW(), title = $2,
+                     polygon = COALESCE($3, polygon),
+                     field_stats = COALESCE($4, field_stats),
+                     user_id = COALESCE($5, user_id),
+                     is_authenticated = $6
+                 WHERE id = $7`,
+                [
+                  JSON.stringify(updatedMessages),
+                  autoTitle,
+                  polygon     ? JSON.stringify(polygon)    : null,
+                  fieldStats  ? JSON.stringify(fieldStats) : null,
+                  userId,
+                  isAuth,
+                  clientSessionId,
+                ]
+              );
+              console.log(`✅ sessions_full updated: ${clientSessionId} (${updatedMessages.length} messages)`);
+            } else {
+              // Session ID provided but not in DB — create it with that ID
+              const newMessages = [userMessage, assistantMessage];
+              const autoTitle   = question.slice(0, 60) || 'New Chat';
+              await pool.query(
+                `INSERT INTO sessions_full (id, user_id, is_authenticated, title, polygon, field_stats, messages)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [
+                  clientSessionId,
+                  userId,
+                  isAuth,
+                  autoTitle,
+                  polygon    ? JSON.stringify(polygon)    : null,
+                  fieldStats ? JSON.stringify(fieldStats) : null,
+                  JSON.stringify(newMessages),
+                ]
+              );
+              console.log(`✅ sessions_full created: ${clientSessionId}`);
+            }
+          } else {
+            // No session ID — create new session, return ID in header (can't after stream)
+            // Just log it — frontend should always send X-Session-Id
+            console.warn('No X-Session-Id header — session not saved');
+          }
+        } catch (dbErr) {
+          console.error('sessions_full upsert failed:', dbErr.message);
         }
       });
 
-      incoming.on('error', () => { res.write('event: error\ndata: {"message":"Stream error"}\n\n'); res.end(); });
+      incoming.on('error', () => {
+        res.write('event: error\ndata: {"message":"Stream error"}\n\n');
+        res.end();
+      });
     });
   } catch (err) {
     res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
@@ -312,31 +410,111 @@ app.post('/api/chat/stream', async (req, res) => {
   }
 });
 
-app.get('/api/traces', async (req, res) => {
+// ════════════════════════════════════════════════════════════════════════════
+// sessions_full API
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── POST /api/sessions-full/init — create a new session, return its ID ────
+app.post('/api/sessions-full/init', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit || '20');
-    const sessionId = req.query.session_id || null;
-    const userId    = req.query.user_id    || null;
-    let query = `SELECT id, session_id, user_id, message_idx, question, answer, tools_used, duration_ms, created_at FROM thinking_traces`;
-    const params = [], where = [];
-    if (sessionId) { params.push(sessionId); where.push(`session_id = $${params.length}`); }
-    if (userId)    { params.push(userId);    where.push(`user_id = $${params.length}`); }
-    if (where.length) query += ' WHERE ' + where.join(' AND ');
-    params.push(limit);
-    query += ` ORDER BY created_at DESC LIMIT $${params.length}`;
-    const result = await pool.query(query, params);
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: 'db_error', details: err.message }); }
+    const userId   = req.headers['x-user-id'] || null;
+    const isAuth   = !!userId;
+    const { polygon, fieldStats } = req.body;
+
+    const result = await pool.query(
+      `INSERT INTO sessions_full (user_id, is_authenticated, polygon, field_stats)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [userId, isAuth, polygon ? JSON.stringify(polygon) : null, fieldStats ? JSON.stringify(fieldStats) : null]
+    );
+    res.json({ id: result.rows[0].id });
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
+  }
 });
 
-app.get('/api/traces/:id', async (req, res) => {
+// ── GET /api/sessions-full — list sessions for a user (or all anonymous) ──
+app.get('/api/sessions-full', async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM thinking_traces WHERE id = $1`, [req.params.id]);
+    const userId = req.headers['x-user-id'] || null;
+    const limit  = parseInt(req.query.limit || '50');
+
+    let result;
+    if (userId) {
+      result = await pool.query(
+        `SELECT id, user_id, is_authenticated, title, polygon, field_stats, created_at, updated_at,
+                jsonb_array_length(messages) as message_count
+         FROM sessions_full WHERE user_id = $1
+         ORDER BY updated_at DESC LIMIT $2`,
+        [userId, limit]
+      );
+    } else {
+      // Anonymous — client should filter by session IDs it knows about
+      const sessionIds = req.query.ids ? req.query.ids.split(',') : [];
+      if (sessionIds.length === 0) return res.json([]);
+      result = await pool.query(
+        `SELECT id, user_id, is_authenticated, title, polygon, field_stats, created_at, updated_at,
+                jsonb_array_length(messages) as message_count
+         FROM sessions_full WHERE id = ANY($1)
+         ORDER BY updated_at DESC`,
+        [sessionIds]
+      );
+    }
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
+  }
+});
+
+// ── GET /api/sessions-full/:id — load full session with all messages ───────
+app.get('/api/sessions-full/:id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM sessions_full WHERE id = $1`,
+      [req.params.id]
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     res.json(result.rows[0]);
-  } catch (err) { res.status(500).json({ error: 'db_error', details: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
+  }
 });
 
+// ── DELETE /api/sessions-full/:id ─────────────────────────────────────────
+app.delete('/api/sessions-full/:id', async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM sessions_full WHERE id = $1`, [req.params.id]);
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
+  }
+});
+
+// ── GET /api/sessions-full/:id/traces — get just the thinking traces ───────
+app.get('/api/sessions-full/:id/traces', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT messages FROM sessions_full WHERE id = $1`,
+      [req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const messages = result.rows[0].messages || [];
+    const traces   = messages
+      .filter(m => m.role === 'assistant' && m.thinking_trace?.length > 0)
+      .map(m => ({
+        question:       messages[messages.indexOf(m) - 1]?.content || '',
+        thinking_trace: m.thinking_trace,
+        tools_used:     m.tools_used,
+        duration_ms:    m.duration_ms,
+      }));
+    res.json(traces);
+  } catch (err) {
+    res.status(500).json({ error: 'db_error', details: err.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Legacy sessions API (kept for backwards compatibility)
+// ════════════════════════════════════════════════════════════════════════════
 function requireUserId(req, res, next) {
   const userId = req.headers['x-user-id'];
   if (!userId) return res.status(401).json({ error: 'X-User-Id header required' });
@@ -411,14 +589,19 @@ app.delete('/api/sessions/:id', requireUserId, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'db_error', details: err.message }); }
 });
 
+// ── Static ─────────────────────────────────────────────────────────────────
 const PUBLIC_DIR = path.join(__dirname, 'dist');
-app.use(express.static(PUBLIC_DIR, { maxAge: '1h', setHeaders: (res, fp) => { if (fp.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache'); } }));
+app.use(express.static(PUBLIC_DIR, {
+  maxAge: '1h',
+  setHeaders: (res, fp) => { if (fp.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache'); },
+}));
 
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'not_found' });
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
+// ── Keep-alive ─────────────────────────────────────────────────────────────
 if (process.env.RENDER_EXTERNAL_URL) {
   const SELF_URL = process.env.RENDER_EXTERNAL_URL;
   setInterval(() => {

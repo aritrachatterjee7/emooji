@@ -133,6 +133,30 @@ export default function MainScreen() {
 
   const fieldMapRef    = useRef(null);
   const sessionIdRef   = useRef(null);
+
+  // ── Generate session ID and init in DB on app start ────────────
+  const initFullSession = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sessions-full/init', {
+        method:  'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.uid ? { 'X-User-Id': user.uid } : {}),
+        },
+        body: JSON.stringify({
+          polygon:    polygonRef.current    || null,
+          fieldStats: fieldStatsRef.current || null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        sessionIdRef.current = data.id;
+        console.log('Session initialized:', data.id);
+      }
+    } catch (e) {
+      console.error('Session init failed:', e);
+    }
+  }, [user]);
   const messagesRef    = useRef([]);
   const polygonRef     = useRef(null);
   const fieldStatsRef  = useRef(null);
@@ -239,8 +263,11 @@ export default function MainScreen() {
     init((pct, label) => {
       setSplashProgress(pct);
       setSplashStatus(label);
-    }).finally(() => setSplashVisible(false));
-  }, [init]);
+    }).finally(() => {
+      setSplashVisible(false);
+      initFullSession(); // init session in DB after app loads
+    });
+  }, [init, initFullSession]);
 
   // ── Auth state changes ─────────────────────────────────────────
   useEffect(() => {
@@ -378,12 +405,12 @@ export default function MainScreen() {
 
   // ── Clear chat ─────────────────────────────────────────────────
   const handleClearChat = useCallback(() => {
-    sessionIdRef.current = null;
     setMessages([]);
     setUnreadCount(0);
     nudgeShownRef.current = false;
     clearHistory();
-  }, [clearHistory]);
+    initFullSession(); // start a fresh session in DB
+  }, [clearHistory, initFullSession]);
 
   // ── Load session from history ──────────────────────────────────
   const handleLoadSession = useCallback((session) => {

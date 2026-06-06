@@ -176,10 +176,14 @@ export function useJackDaw() {
 
     // ── Try streaming first (works for everyone) ───────────────────────
     try {
+      const streamHeaders = { 'Content-Type': 'application/json' };
+      if (sessionRef.current) streamHeaders['X-Session-Id'] = sessionRef.current;
+      if (customerId)         streamHeaders['X-User-Id']    = customerId;
+
       const res = await fetch(CFG.proxy.streamUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        method:  'POST',
+        headers: streamHeaders,
+        body:    JSON.stringify(payload),
       });
 
       if (res.ok && res.body) {
