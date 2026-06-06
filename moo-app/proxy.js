@@ -274,7 +274,21 @@ app.post('/api/chat/stream', async (req, res) => {
                 }
               }
               if (eventType === 'final') {
-                finalAnswer = parsed.content || parsed.message || '';
+                console.log('FINAL EVENT:', JSON.stringify(parsed).slice(0, 200));
+                // Handle all JackDaw final event formats
+                if (typeof parsed === 'string') {
+                  finalAnswer = parsed;
+                } else if (parsed.content && typeof parsed.content === 'string') {
+                  finalAnswer = parsed.content;
+                } else if (parsed.message && typeof parsed.message === 'string') {
+                  finalAnswer = parsed.message;
+                } else if (parsed.msg?.content) {
+                  finalAnswer = parsed.msg.content;
+                } else if (Array.isArray(parsed) && parsed[0]?.msg?.content) {
+                  finalAnswer = parsed[0].msg.content;
+                } else if (parsed.response) {
+                  finalAnswer = parsed.response;
+                }
               }
             } catch {}
             eventType = null; dataLine = null;
