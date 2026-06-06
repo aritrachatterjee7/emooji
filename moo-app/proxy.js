@@ -31,41 +31,6 @@ async function initDB() {
   const client = await pool.connect();
   try {
     await client.query(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id     TEXT NOT NULL,
-        title       TEXT NOT NULL DEFAULT 'New Chat',
-        polygon     JSONB,
-        field_stats JSONB,
-        created_at  TIMESTAMPTZ DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS messages (
-        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
-        role       TEXT NOT NULL,
-        content    TEXT NOT NULL,
-        time       TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
-
-      CREATE TABLE IF NOT EXISTS thinking_traces (
-        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        session_id  TEXT,
-        user_id     TEXT,
-        message_idx INTEGER,
-        question    TEXT,
-        answer      TEXT,
-        events      JSONB NOT NULL DEFAULT '[]',
-        tools_used  JSONB NOT NULL DEFAULT '[]',
-        duration_ms INTEGER,
-        created_at  TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_traces_session_id ON thinking_traces(session_id);
-      CREATE INDEX IF NOT EXISTS idx_traces_user_id ON thinking_traces(user_id);
-
       CREATE TABLE IF NOT EXISTS sessions_full (
         id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id          TEXT,
@@ -512,82 +477,7 @@ app.get('/api/sessions-full/:id/traces', async (req, res) => {
   }
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// Legacy sessions API (kept for backwards compatibility)
-// ════════════════════════════════════════════════════════════════════════════
-function requireUserId(req, res, next) {
-  const userId = req.headers['x-user-id'];
-  if (!userId) return res.status(401).json({ error: 'X-User-Id header required' });
-  req.userId = userId;
-  next();
-}
-
-app.get('/api/sessions', requireUserId, async (req, res) => {
-  try {
-    const result = await pool.query(
-      `SELECT id, title, polygon, field_stats, created_at, updated_at FROM sessions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 50`,
-      [req.userId]
-    );
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: 'db_error', details: err.message }); }
-});
-
-app.post('/api/sessions', requireUserId, async (req, res) => {
-  try {
-    const { title, messages, polygon, fieldStats } = req.body;
-    if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
-    const autoTitle = title || messages.find(m => m.role === 'user')?.content?.slice(0, 60) || 'New Chat';
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const sessionRes = await client.query(
-        `INSERT INTO sessions (user_id, title, polygon, field_stats) VALUES ($1, $2, $3, $4) RETURNING id`,
-        [req.userId, autoTitle, polygon ? JSON.stringify(polygon) : null, fieldStats ? JSON.stringify(fieldStats) : null]
-      );
-      const sessionId = sessionRes.rows[0].id;
-      for (const msg of messages) {
-        await client.query(`INSERT INTO messages (session_id, role, content, time) VALUES ($1, $2, $3, $4)`, [sessionId, msg.role, msg.content, msg.time || null]);
-      }
-      await client.query('COMMIT');
-      res.json({ id: sessionId, title: autoTitle });
-    } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
-  } catch (err) { res.status(500).json({ error: 'db_error', details: err.message }); }
-});
-
-app.put('/api/sessions/:id', requireUserId, async (req, res) => {
-  try {
-    const { messages, polygon, fieldStats } = req.body;
-    if (!messages || messages.length === 0) return res.status(400).json({ error: 'No messages' });
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(`UPDATE sessions SET polygon=$1, field_stats=$2, updated_at=NOW() WHERE id=$3 AND user_id=$4`,
-        [polygon ? JSON.stringify(polygon) : null, fieldStats ? JSON.stringify(fieldStats) : null, req.params.id, req.userId]);
-      await client.query(`DELETE FROM messages WHERE session_id=$1`, [req.params.id]);
-      for (const msg of messages) {
-        await client.query(`INSERT INTO messages (session_id, role, content, time) VALUES ($1, $2, $3, $4)`, [req.params.id, msg.role, msg.content, msg.time || null]);
-      }
-      await client.query('COMMIT');
-      res.json({ id: req.params.id });
-    } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
-  } catch (err) { res.status(500).json({ error: 'db_error', details: err.message }); }
-});
-
-app.get('/api/sessions/:id', requireUserId, async (req, res) => {
-  try {
-    const sessionRes = await pool.query(`SELECT id, title, polygon, field_stats, created_at FROM sessions WHERE id=$1 AND user_id=$2`, [req.params.id, req.userId]);
-    if (sessionRes.rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    const messagesRes = await pool.query(`SELECT role, content, time FROM messages WHERE session_id=$1 ORDER BY created_at ASC`, [req.params.id]);
-    res.json({ ...sessionRes.rows[0], messages: messagesRes.rows });
-  } catch (err) { res.status(500).json({ error: 'db_error', details: err.message }); }
-});
-
-app.delete('/api/sessions/:id', requireUserId, async (req, res) => {
-  try {
-    await pool.query(`DELETE FROM sessions WHERE id=$1 AND user_id=$2`, [req.params.id, req.userId]);
-    res.json({ deleted: true });
-  } catch (err) { res.status(500).json({ error: 'db_error', details: err.message }); }
-});
+// Legacy sessions API removed — using sessions_full only
 
 // ── Static ─────────────────────────────────────────────────────────────────
 const PUBLIC_DIR = path.join(__dirname, 'dist');
