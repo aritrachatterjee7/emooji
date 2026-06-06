@@ -299,6 +299,32 @@ app.post('/api/chat/stream', async (req, res) => {
       incoming.on('end', async () => {
         res.end();
 
+        // ── Flush remaining SSE buffer on stream end ───────────────
+        if (sseBuffer.trim()) {
+          const remainingLines = (sseBuffer + '\n').split('\n');
+          let et = null, dl = null;
+          for (const line of remainingLines) {
+            if (line.startsWith('event:'))     { et = line.slice(6).trim(); }
+            else if (line.startsWith('data:')) { dl = line.slice(5).trim(); }
+            else if (line === '' && et && dl) {
+              try {
+                const p = JSON.parse(dl);
+                if (et === 'final') {
+                  console.log('FINAL EVENT:', JSON.stringify(p).slice(0, 300));
+                  if (typeof p === 'string')                           finalAnswer = p;
+                  else if (p.content && typeof p.content === 'string') finalAnswer = p.content;
+                  else if (p.message && typeof p.message === 'string') finalAnswer = p.message;
+                  else if (p.msg?.content)                             finalAnswer = p.msg.content;
+                  else if (Array.isArray(p) && p[0]?.msg?.content)    finalAnswer = p[0].msg.content;
+                  else if (p.response)                                 finalAnswer = p.response;
+                }
+              } catch {}
+              et = null; dl = null;
+            }
+          }
+        }
+        console.log('Answer preview:', finalAnswer.slice(0, 150));
+
         // ── Build the two new message objects with embedded trace ──
         const userMessage = {
           role:    'user',
