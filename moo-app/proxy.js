@@ -235,6 +235,8 @@ app.post('/api/chat/stream', async (req, res) => {
     const toolsUsed     = new Set();
     let   sseBuffer     = '';
     let   finalAnswer   = '';
+    let   currentEvent  = null;  // track current event type across chunks
+    let   finalDataBuf  = '';    // accumulate final event data across chunks
 
     const msgs            = req.body.messages || [];
     const lastUserMsg     = msgs.filter(m => m.role === 'user').slice(-1)[0];
@@ -256,15 +258,18 @@ app.post('/api/chat/stream', async (req, res) => {
         sseBuffer += chunk.toString();
         const lines = sseBuffer.split('\n');
         sseBuffer   = lines.pop();
-        let eventType = null, dataLine = null;
 
         for (const line of lines) {
-          if (line.startsWith('event:'))     { eventType = line.slice(6).trim(); }
-          else if (line.startsWith('data:')) { dataLine  = line.slice(5).trim(); }
-          else if (line === '' && eventType && dataLine) {
-            try {
-              const parsed = JSON.parse(dataLine);
-              if (eventType === 'progress') {
+          if (line.startsWith('event:')) {
+            currentEvent = line.slice(6).trim();
+            if (currentEvent === 'final') finalDataBuf = '';
+          } else if (line.startsWith('data:')) {
+            const data = line.slice(5).trim();
+            if (currentEvent === 'final') {
+              finalDataBuf += data;
+            } else if (currentEvent === 'progress') {
+              try {
+                const parsed = JSON.parse(data);
                 const text = parsed.content || parsed.message || parsed.text || null;
                 if (text) {
                   traceEvents.push({ text, ts: Date.now(), source: parsed.source || 'unknown', stage: parsed.stage || null });
@@ -272,26 +277,23 @@ app.post('/api/chat/stream', async (req, res) => {
                   const match = (parsed.content || '').match(/Starting tool call: (\S+)/);
                   if (match) toolsUsed.add(match[1]);
                 }
-              }
-              if (eventType === 'final') {
-                console.log('FINAL EVENT:', JSON.stringify(parsed).slice(0, 200));
-                // Handle all JackDaw final event formats
-                if (typeof parsed === 'string') {
-                  finalAnswer = parsed;
-                } else if (parsed.content && typeof parsed.content === 'string') {
-                  finalAnswer = parsed.content;
-                } else if (parsed.message && typeof parsed.message === 'string') {
-                  finalAnswer = parsed.message;
-                } else if (parsed.msg?.content) {
-                  finalAnswer = parsed.msg.content;
-                } else if (Array.isArray(parsed) && parsed[0]?.msg?.content) {
-                  finalAnswer = parsed[0].msg.content;
-                } else if (parsed.response) {
-                  finalAnswer = parsed.response;
-                }
-              }
-            } catch {}
-            eventType = null; dataLine = null;
+              } catch {}
+            }
+          } else if (line === '') {
+            if (currentEvent === 'final' && finalDataBuf) {
+              try {
+                const parsed = JSON.parse(finalDataBuf);
+                if (typeof parsed === 'string')                                finalAnswer = parsed;
+                else if (parsed.content && typeof parsed.content === 'string') finalAnswer = parsed.content;
+                else if (parsed.message && typeof parsed.message === 'string') finalAnswer = parsed.message;
+                else if (parsed.msg?.content)                                  finalAnswer = parsed.msg.content;
+                else if (Array.isArray(parsed) && parsed[0]?.msg?.content)     finalAnswer = parsed[0].msg.content;
+                else if (parsed.response)                                       finalAnswer = parsed.response;
+                console.log('✅ Final answer captured:', finalAnswer.slice(0, 100));
+              } catch (e) { /* still accumulating */ }
+              finalDataBuf = '';
+            }
+            currentEvent = null;
           }
         }
       });
@@ -299,29 +301,19 @@ app.post('/api/chat/stream', async (req, res) => {
       incoming.on('end', async () => {
         res.end();
 
-        // ── Flush remaining SSE buffer on stream end ───────────────
-        if (sseBuffer.trim()) {
-          const remainingLines = (sseBuffer + '\n').split('\n');
-          let et = null, dl = null;
-          for (const line of remainingLines) {
-            if (line.startsWith('event:'))     { et = line.slice(6).trim(); }
-            else if (line.startsWith('data:')) { dl = line.slice(5).trim(); }
-            else if (line === '' && et && dl) {
-              try {
-                const p = JSON.parse(dl);
-                if (et === 'final') {
-                  console.log('FINAL EVENT:', JSON.stringify(p).slice(0, 300));
-                  if (typeof p === 'string')                           finalAnswer = p;
-                  else if (p.content && typeof p.content === 'string') finalAnswer = p.content;
-                  else if (p.message && typeof p.message === 'string') finalAnswer = p.message;
-                  else if (p.msg?.content)                             finalAnswer = p.msg.content;
-                  else if (Array.isArray(p) && p[0]?.msg?.content)    finalAnswer = p[0].msg.content;
-                  else if (p.response)                                 finalAnswer = p.response;
-                }
-              } catch {}
-              et = null; dl = null;
+        // Flush any remaining finalDataBuf
+        if (finalDataBuf.trim()) {
+          try {
+            const p = JSON.parse(finalDataBuf);
+            if (!finalAnswer) {
+              if (typeof p === 'string')                                finalAnswer = p;
+              else if (p.content && typeof p.content === 'string')     finalAnswer = p.content;
+              else if (p.message && typeof p.message === 'string')     finalAnswer = p.message;
+              else if (p.msg?.content)                                  finalAnswer = p.msg.content;
+              else if (Array.isArray(p) && p[0]?.msg?.content)         finalAnswer = p[0].msg.content;
+              else if (p.response)                                      finalAnswer = p.response;
             }
-          }
+          } catch {}
         }
         console.log('Answer preview:', finalAnswer.slice(0, 150));
 
