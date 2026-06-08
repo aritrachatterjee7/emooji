@@ -27,17 +27,18 @@ function InlineText({ text, style, colors }) {
 }
 
 function MarkdownSegment({ seg, colors, fontScale }) {
+  const fs = fontScale || { bubble: 13, heading: 15, mono: 10, lineHeight: 20 };
   if (seg.type === 'spacer') return <View style={{ height: 5 }} />;
-  if (seg.type === 'h2') return <InlineText text={seg.text} style={{ fontFamily: Fonts.displayBold, fontSize: 14, color: colors.textPrimary, marginVertical: 4 }} colors={colors} />;
-  if (seg.type === 'h3') return <InlineText text={seg.text} style={{ fontFamily: Fonts.bodyMedium, fontSize: 13, color: colors.textPrimary, marginVertical: 3 }} colors={colors} />;
-  if (seg.type === 'code') return <Text style={{ fontFamily: Fonts.mono, fontSize: 11, color: colors.textSecondary, backgroundColor: colors.bgOverlay, padding: 8, borderRadius: Radius.sm, marginVertical: 4 }}>{seg.text}</Text>;
+  if (seg.type === 'h2') return <InlineText text={seg.text} style={{ fontFamily: Fonts.displayBold, fontSize: fs.heading + 1, color: colors.textPrimary, marginVertical: 4 }} colors={colors} />;
+  if (seg.type === 'h3') return <InlineText text={seg.text} style={{ fontFamily: Fonts.bodyMedium, fontSize: fs.heading, color: colors.textPrimary, marginVertical: 3 }} colors={colors} />;
+  if (seg.type === 'code') return <Text style={{ fontFamily: Fonts.mono, fontSize: fs.mono + 1, color: colors.textSecondary, backgroundColor: colors.bgOverlay, padding: 8, borderRadius: Radius.sm, marginVertical: 4 }}>{seg.text}</Text>;
   if (seg.type === 'bullet') return (
     <View style={{ flexDirection: 'row', gap: 7, marginVertical: 1 }}>
-      <Text style={{ fontFamily: Fonts.mono, fontSize: 14, color: colors.green, lineHeight: 20 }}>·</Text>
-      <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: fontScale?.bubble || 13, color: colors.textPrimary, lineHeight: fontScale?.lineHeight || 20 }} colors={colors} />
+      <Text style={{ fontFamily: Fonts.mono, fontSize: fs.bubble + 1, color: colors.green, lineHeight: fs.lineHeight }}>·</Text>
+      <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: fs.bubble, color: colors.textPrimary, lineHeight: fs.lineHeight }} colors={colors} />
     </View>
   );
-  return <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: fontScale?.bubble || 13, color: colors.textPrimary, lineHeight: fontScale?.lineHeight || 20 }} colors={colors} />;
+  return <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: fs.bubble, color: colors.textPrimary, lineHeight: fs.lineHeight }} colors={colors} />;
 }
 
 function BubbleContent({ content, colors, fontScale }) {
@@ -379,7 +380,7 @@ export function ChatPanel({
         ) : null}
         <View style={[styles.inputRow, { backgroundColor: colors.bgElevated, borderColor: isListening ? '#dc2626' : colors.borderMid }]}>
           <TextInput
-            style={[styles.input, { color: hasField ? colors.textPrimary : colors.textMuted }]}
+            style={[styles.input, { color: hasField ? colors.textPrimary : colors.textMuted, fontSize: fontScale?.body || 14 }]}
             value={text}
             onChangeText={setText}
             placeholder={
