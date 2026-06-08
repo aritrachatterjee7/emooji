@@ -26,7 +26,7 @@ function InlineText({ text, style, colors }) {
   );
 }
 
-function MarkdownSegment({ seg, colors }) {
+function MarkdownSegment({ seg, colors, fontScale }) {
   if (seg.type === 'spacer') return <View style={{ height: 5 }} />;
   if (seg.type === 'h2') return <InlineText text={seg.text} style={{ fontFamily: Fonts.displayBold, fontSize: 14, color: colors.textPrimary, marginVertical: 4 }} colors={colors} />;
   if (seg.type === 'h3') return <InlineText text={seg.text} style={{ fontFamily: Fonts.bodyMedium, fontSize: 13, color: colors.textPrimary, marginVertical: 3 }} colors={colors} />;
@@ -34,17 +34,17 @@ function MarkdownSegment({ seg, colors }) {
   if (seg.type === 'bullet') return (
     <View style={{ flexDirection: 'row', gap: 7, marginVertical: 1 }}>
       <Text style={{ fontFamily: Fonts.mono, fontSize: 14, color: colors.green, lineHeight: 20 }}>·</Text>
-      <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: 13, color: colors.textPrimary, lineHeight: 20 }} colors={colors} />
+      <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: fontScale?.bubble || 13, color: colors.textPrimary, lineHeight: fontScale?.lineHeight || 20 }} colors={colors} />
     </View>
   );
-  return <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: 13, color: colors.textPrimary, lineHeight: 20 }} colors={colors} />;
+  return <InlineText text={seg.text} style={{ fontFamily: Fonts.body, fontSize: fontScale?.bubble || 13, color: colors.textPrimary, lineHeight: fontScale?.lineHeight || 20 }} colors={colors} />;
 }
 
-function BubbleContent({ content, colors }) {
+function BubbleContent({ content, colors, fontScale }) {
   return (
     <View>
       {parseMarkdownNative(content).map((seg, i) => (
-        <MarkdownSegment key={i} seg={seg} colors={colors} />
+        <MarkdownSegment key={i} seg={seg} colors={colors} fontScale={fontScale} />
       ))}
     </View>
   );
@@ -83,7 +83,7 @@ function ChatMessage({ item, colors, onSpeak, isSpeaking }) {
           ? { backgroundColor: colors.bubbleUser, borderColor: 'rgba(15,34,68,0.7)', borderBottomRightRadius: 4 }
           : { backgroundColor: colors.bubbleAsst, borderColor: colors.border, borderBottomLeftRadius: 4 },
       ]}>
-        <BubbleContent content={item.content} colors={colors} />
+        <BubbleContent content={item.content} colors={colors} fontScale={fontScale} />
         <View style={styles.msgFooter}>
           <Text style={[styles.msgTime, { color: colors.textMuted }]}>{item.time}</Text>
           {/* Speak button on assistant messages */}
@@ -159,7 +159,7 @@ export function ChatPanel({
   isSessionActive, isRecording, onStartSession, onEndSession,
   hasField,
 }) {
-  const { colors }  = useTheme();
+  const { colors, fontScale } = useTheme();
   const { width }   = useWindowDimensions();
   const isMobile    = width < 860;
   const [text, setText] = useState('');

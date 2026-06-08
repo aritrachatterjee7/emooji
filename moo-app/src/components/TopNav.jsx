@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Fonts, Radius, Spacing, NAV_HEIGHT, DarkColors } from '../constants/tokens';
+import { FONT_SIZES } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
@@ -65,7 +66,7 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
   const { state, label } = connStatus;
 
   const { logout, user } = useAuth() ?? { logout: () => {}, user: null };
-  const { isDark, toggleTheme, colors } = useTheme() ?? { isDark: false, toggleTheme: () => {}, colors: DarkColors };
+  const { isDark, toggleTheme, colors, fontSize, setFontSize } = useTheme() ?? { isDark: false, toggleTheme: () => {}, colors: DarkColors, fontSize: 'medium', setFontSize: () => {} };
 
   const [installPlatform, setInstallPlatform] = useState(null);
   const [showIOSModal,    setShowIOSModal]    = useState(false);
@@ -146,6 +147,27 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
                 { color: state === 'online' ? colors.green : state === 'connecting' ? colors.warning : colors.danger }
               ]}>{label}</Text>
             )}
+          </View>
+
+          {/* Font size buttons */}
+          <View style={[styles.fontSizeBtns, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}>
+            {Object.keys(FONT_SIZES).map(size => (
+              <TouchableOpacity
+                key={size}
+                style={[
+                  styles.fontSizeBtn,
+                  fontSize === size && { backgroundColor: colors.green },
+                ]}
+                onPress={() => setFontSize(size)}
+              >
+                <Text style={[
+                  styles.fontSizeBtnText,
+                  { color: fontSize === size ? '#07090e' : colors.textMuted }
+                ]}>
+                  {FONT_SIZES[size].label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           {/* Theme toggle */}
@@ -258,6 +280,9 @@ const styles = StyleSheet.create({
   badge:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 4, borderRadius: Radius.full, borderWidth: 1 },
   dot:          { width: 6, height: 6, borderRadius: 3 },
   badgeLabel:   { fontFamily: Fonts.mono, fontSize: 10 },
+  fontSizeBtns: { flexDirection: 'row', borderRadius: Radius.full, borderWidth: 1, overflow: 'hidden' },
+  fontSizeBtn:  { paddingHorizontal: 7, paddingVertical: 5, alignItems: 'center', justifyContent: 'center' },
+  fontSizeBtnText: { fontFamily: Fonts.displayBold, fontSize: 10 },
   iconBtn:      { width: 30, height: 30, borderRadius: Radius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   iconBtnText:  { fontSize: 13 },
   installBtn:   { paddingHorizontal: 8, paddingVertical: 5, borderRadius: Radius.md },
