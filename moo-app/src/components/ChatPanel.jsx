@@ -69,7 +69,7 @@ function ThinkingIndicator({ statusText, colors }) {
   );
 }
 
-function ChatMessage({ item, colors, onSpeak, isSpeaking }) {
+function ChatMessage({ item, colors, onSpeak, isSpeaking, fontScale }) {
   const isUser = item.role === 'user';
   return (
     <View style={[styles.msgRow, isUser && styles.msgRowUser]}>
@@ -110,14 +110,14 @@ function ChatMessage({ item, colors, onSpeak, isSpeaking }) {
   );
 }
 
-function WelcomeMessage({ colors }) {
+function WelcomeMessage({ colors, fontScale }) {
   return (
     <View style={styles.msgRow}>
       <View style={[styles.avatar, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
         <Text style={styles.avatarEmoji}>🐄</Text>
       </View>
       <View style={[styles.bubble, { backgroundColor: colors.bubbleAsst, borderColor: colors.greenBorder, borderBottomLeftRadius: 4, maxWidth: '90%' }]}>
-        <Text style={{ fontFamily: Fonts.body, fontSize: 13, color: colors.textPrimary, lineHeight: 20 }}>
+        <Text style={{ fontFamily: Fonts.body, fontSize: fontScale?.bubble || 13, color: colors.textPrimary, lineHeight: fontScale?.lineHeight || 20 }}>
           <Text style={{ fontFamily: Fonts.displayBold, color: colors.textPrimary }}>Welcome to eMooJI.</Text>
           {' '}I connect to real satellite databases to answer questions about any field in Europe.
         </Text>
@@ -346,12 +346,13 @@ export function ChatPanel({
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
-        <WelcomeMessage colors={colors} />
+        <WelcomeMessage colors={colors} fontScale={fontScale} />
         {messages.map((m, i) => (
           <ChatMessage
             key={i}
             item={m}
             colors={colors}
+            fontScale={fontScale}
             onSpeak={m.role === 'assistant' ? (content) => handleSpeakMsg(content, i) : null}
             isSpeaking={speakingMsgIdx === i && isSpeaking}
           />
