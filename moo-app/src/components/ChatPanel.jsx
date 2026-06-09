@@ -61,7 +61,7 @@ function ThinkingIndicator({ statusText, colors }) {
         <View style={styles.thinkingRow}>
           <View style={[styles.pulseDot, { backgroundColor: colors.green }]} />
           <Text style={[styles.thinkingText, { color: colors.textSecondary }]}>
-            {statusText || 'Thinking…'}
+            {statusText || strings?.thinking || 'Thinking…'}
           </Text>
         </View>
       </View>
@@ -110,7 +110,7 @@ function ChatMessage({ item, colors, onSpeak, isSpeaking, fontScale }) {
   );
 }
 
-function WelcomeMessage({ colors, fontScale }) {
+function WelcomeMessage({ colors, fontScale, strings }) {
   return (
     <View style={styles.msgRow}>
       <View style={[styles.avatar, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
@@ -118,12 +118,12 @@ function WelcomeMessage({ colors, fontScale }) {
       </View>
       <View style={[styles.bubble, { backgroundColor: colors.bubbleAsst, borderColor: colors.greenBorder, borderBottomLeftRadius: 4, maxWidth: '90%' }]}>
         <Text style={{ fontFamily: Fonts.body, fontSize: fontScale?.bubble || 13, color: colors.textPrimary, lineHeight: fontScale?.lineHeight || 20 }}>
-          <Text style={{ fontFamily: Fonts.displayBold, color: colors.textPrimary }}>Welcome to eMooJI.</Text>
-          {' '}I connect to real satellite databases to answer questions about any field in Europe.
+          <Text style={{ fontFamily: Fonts.displayBold, color: colors.textPrimary }}>{strings?.welcome || 'Welcome to eMooJI.'}</Text>
+          {' '}{strings?.welcomeSub || 'I connect to real satellite databases to answer questions about any field in Europe.'}
         </Text>
         {[
-          ['1', 'Tap Polygon or Rectangle and draw over any field on the map'],
-          ['2', 'Ask any question by typing or tapping the 🎤 mic button'],
+          ['1', strings?.step1 || 'Tap Polygon or Rectangle and draw over any field on the map'],
+          ['2', strings?.step2 || 'Ask any question by typing or tapping the 🎤 mic button'],
         ].map(([n, t]) => (
           <View key={n} style={styles.step}>
             <View style={[styles.stepNum, { backgroundColor: colors.greenTrace, borderColor: colors.greenBorder }]}>
@@ -160,7 +160,7 @@ export function ChatPanel({
   isSessionActive, isRecording, onStartSession, onEndSession,
   hasField,
 }) {
-  const { colors, fontScale } = useTheme();
+  const { colors, fontScale, strings } = useTheme();
   const { width }   = useWindowDimensions();
   const isMobile    = width < 860;
   const [text, setText] = useState('');
@@ -251,7 +251,7 @@ export function ChatPanel({
       <View style={[styles.header, { backgroundColor: colors.bgElevated, borderBottomColor: colors.border }]}>
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>
-            {isMobile ? 'Analysis' : 'Field Analysis'}
+            {isMobile ? (strings?.analysis || 'Analysis') : (strings?.fieldAnalysis || 'Field Analysis')}
           </Text>
           <View style={styles.headerBtns}>
             {/* Voice toggle */}
@@ -279,7 +279,7 @@ export function ChatPanel({
               >
                 <Text style={styles.sessionBtnIcon}>⏺</Text>
                 <Text style={[styles.sessionBtnText, { color: colors.green }]}>
-                  {isMobile ? 'Record' : 'Start Session'}
+                  {isMobile ? (strings?.record || 'Record') : (strings?.startSession || 'Start Session')}
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -290,7 +290,7 @@ export function ChatPanel({
               >
                 <Text style={styles.sessionBtnIcon}>⏹</Text>
                 <Text style={[styles.sessionBtnText, { color: '#dc2626' }]}>
-                  {isMobile ? 'Stop' : 'End Session'}
+                  {isMobile ? (strings?.stop || 'Stop') : (strings?.endSession || 'End Session')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -316,7 +316,7 @@ export function ChatPanel({
         <View style={[styles.listeningBar, { backgroundColor: 'rgba(220,38,38,0.08)', borderColor: 'rgba(220,38,38,0.3)' }]}>
           <View style={[styles.listeningDot, { backgroundColor: '#dc2626' }]} />
           <Text style={[styles.listeningText, { color: '#dc2626' }]}>
-            Listening… speak your question
+            {strings?.listening || 'Listening… speak your question'}
           </Text>
           <TouchableOpacity onPress={stopListening} style={styles.listeningStop}>
             <Text style={{ fontFamily: Fonts.mono, fontSize: 11, color: '#dc2626' }}>Stop</Text>
@@ -329,7 +329,7 @@ export function ChatPanel({
         <View style={[styles.listeningBar, { backgroundColor: 'rgba(11,219,110,0.08)', borderColor: colors.greenBorder }]}>
           <View style={[styles.listeningDot, { backgroundColor: colors.green }]} />
           <Text style={[styles.listeningText, { color: colors.green }]}>
-            Speaking response…
+            {strings?.speaking || 'Speaking response…'}
           </Text>
           <TouchableOpacity onPress={stopSpeaking} style={styles.listeningStop}>
             <Text style={{ fontFamily: Fonts.mono, fontSize: 11, color: colors.green }}>Stop</Text>
@@ -346,7 +346,7 @@ export function ChatPanel({
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
-        <WelcomeMessage colors={colors} fontScale={fontScale} />
+        <WelcomeMessage colors={colors} fontScale={fontScale} strings={strings} />
         {messages.map((m, i) => (
           <ChatMessage
             key={i}
@@ -366,7 +366,7 @@ export function ChatPanel({
         <View style={[styles.noFieldBanner, { backgroundColor: colors.bgElevated, borderTopColor: colors.border }]}>
           <Text style={styles.noFieldEmoji}>🗺️</Text>
           <Text style={[styles.noFieldText, { color: colors.textMuted }]}>
-            Draw a field on the map to start asking questions
+            {strings?.noFieldBanner || 'Draw a field on the map to start asking questions'}
           </Text>
         </View>
       )}
@@ -386,10 +386,10 @@ export function ChatPanel({
             onChangeText={setText}
             placeholder={
               !hasField
-                ? '🗺️ Draw a field on the map to begin…'
+                ? (strings?.noField || '🗺️ Draw a field on the map to begin…')
                 : isListening
-                  ? 'Listening…'
-                  : 'Ask about this field…'
+                  ? (strings?.listening || 'Listening…')
+                  : (strings?.placeholder || 'Ask about this field…')
             }
             placeholderTextColor={!hasField ? colors.textMuted : isListening ? '#dc2626' : colors.textMuted}
             multiline

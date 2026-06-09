@@ -141,6 +141,7 @@ export function useJackDaw() {
     onProgress = null,
     isSignedIn = false,
     fullSessionId = null,
+    language = 'en',
   ) => {
 
     // No system prompt — let JackDaw behave exactly as its native interface
@@ -156,6 +157,9 @@ export function useJackDaw() {
     };
 
     const payload = { messages: historyRef.current };
+
+    // Send language preference to JackDaw
+    if (language && language !== 'en') payload.language = language;
 
     if (polygon) {
       const wkt = geojsonToWKT(polygon);

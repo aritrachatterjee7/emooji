@@ -30,7 +30,7 @@ function timeAgo(dateStr) {
 }
 
 export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewChat }) {
-  const { colors }    = useTheme();
+  const { colors, strings } = useTheme();
   const insets        = useSafeAreaInsets();
   const { width }     = useWindowDimensions();
   const isMobile      = width < 860;
@@ -129,7 +129,7 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Chat History</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>{strings?.chatHistory || 'Chat History'}</Text>
             <Text style={[styles.sub, { color: colors.textMuted }]}>
               {sessions.length} session{sessions.length !== 1 ? 's' : ''}
               {!userId && ' · local only'}
@@ -147,7 +147,7 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
           activeOpacity={0.85}
         >
           <Text style={styles.newChatIcon}>✏️</Text>
-          <Text style={styles.newChatText}>New Chat</Text>
+          <Text style={styles.newChatText}>{strings?.newChat || 'New Chat'}</Text>
         </TouchableOpacity>
 
         {!userId && (

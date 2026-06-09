@@ -122,8 +122,9 @@ export default function MainScreen() {
   const { width }  = useWindowDimensions();
   const isMobile   = width < MOBILE_BREAKPOINT;
 
-  const theme  = useTheme();
-  const colors = theme?.colors ?? DarkColors;
+  const theme    = useTheme();
+  const colors   = theme?.colors ?? DarkColors;
+  const language = theme?.language ?? 'en';
 
   const auth        = useAuth();
   const user        = auth?.user ?? null;
@@ -351,7 +352,8 @@ export default function MainScreen() {
         customerId,
         (status) => setStreamStatus(status),
         isSignedIn,
-        sessionIdRef.current, // pass sessions_full UUID for thinking trace storage
+        sessionIdRef.current,
+        language,
       );
       const assistantMsg = { role: 'assistant', content: reply, time: now() };
       setMessages(prev => {

@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Fonts, Radius, Spacing, NAV_HEIGHT, DarkColors } from '../constants/tokens';
-import { FONT_SIZES } from '../context/ThemeContext';
+import { FONT_SIZES, LANGUAGES } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
@@ -66,7 +66,7 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
   const { state, label } = connStatus;
 
   const { logout, user } = useAuth() ?? { logout: () => {}, user: null };
-  const { isDark, toggleTheme, colors, fontSize, setFontSize } = useTheme() ?? { isDark: false, toggleTheme: () => {}, colors: DarkColors, fontSize: 'medium', setFontSize: () => {} };
+  const { isDark, toggleTheme, colors, fontSize, setFontSize, language, setLanguage } = useTheme() ?? { isDark: false, toggleTheme: () => {}, colors: DarkColors, fontSize: 'medium', setFontSize: () => {}, language: 'en', setLanguage: () => {} };
 
   const [installPlatform, setInstallPlatform] = useState(null);
   const [showIOSModal,    setShowIOSModal]    = useState(false);
@@ -165,6 +165,27 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
                   { color: fontSize === size ? '#07090e' : colors.textMuted }
                 ]}>
                   {FONT_SIZES[size].label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Language switcher */}
+          <View style={[styles.fontSizeBtns, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid }]}>
+            {Object.keys(LANGUAGES).map(lang => (
+              <TouchableOpacity
+                key={lang}
+                style={[
+                  styles.fontSizeBtn,
+                  language === lang && { backgroundColor: colors.green },
+                ]}
+                onPress={() => setLanguage(lang)}
+              >
+                <Text style={[
+                  styles.fontSizeBtnText,
+                  { color: language === lang ? '#07090e' : colors.textMuted }
+                ]}>
+                  {LANGUAGES[lang].label}
                 </Text>
               </TouchableOpacity>
             ))}

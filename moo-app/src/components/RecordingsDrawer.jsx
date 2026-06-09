@@ -32,7 +32,7 @@ function getAllRecordings() {
 }
 
 export function RecordingsDrawer({ visible, onClose }) {
-  const { colors }  = useTheme();
+  const { colors, strings } = useTheme();
   const insets      = useSafeAreaInsets();
   const { width }   = useWindowDimensions();
   const isMobile    = width < 860;
@@ -80,7 +80,7 @@ export function RecordingsDrawer({ visible, onClose }) {
 
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>My Recordings</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>{strings?.myRecordings || 'My Recordings'}</Text>
             <Text style={[styles.sub, { color: colors.textMuted }]}>
               {recordings.length} recording{recordings.length !== 1 ? 's' : ''} · this device only
             </Text>
