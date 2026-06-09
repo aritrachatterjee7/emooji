@@ -16,8 +16,8 @@ import { HistoryDrawer }       from '../src/components/HistoryDrawer';
 import { RecordingsDrawer }    from '../src/components/RecordingsDrawer';
 import { useRecording }        from '../src/hooks/useRecording';
 import {
-  upsertLocalSession,
-  upsertRemoteSession,
+  initRemoteSession,
+  trackSessionId,
   migrateLocalToRemote,
 } from '../src/hooks/useSessionStorage';
 import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
@@ -138,21 +138,11 @@ export default function MainScreen() {
   // ── Generate session ID and init in DB on app start ────────────
   const initFullSession = useCallback(async () => {
     try {
-      const res = await fetch('/api/sessions-full/init', {
-        method:  'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(user?.uid ? { 'X-User-Id': user.uid } : {}),
-        },
-        body: JSON.stringify({
-          polygon:    polygonRef.current    || null,
-          fieldStats: fieldStatsRef.current || null,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        sessionIdRef.current = data.id;
-        console.log('Session initialized:', data.id);
+      const id = await initRemoteSession(user?.uid || null);
+      if (id) {
+        sessionIdRef.current = id;
+        if (!user?.uid) trackSessionId(id); // track for anonymous users
+        console.log('Session initialized:', id);
       }
     } catch (e) {
       console.error('Session init failed:', e);
@@ -320,17 +310,11 @@ export default function MainScreen() {
     fieldMapRef.current?.clearField();
   }, []);
 
-  // ── Auto-save ──────────────────────────────────────────────────
-  const autoSave = useCallback(async (msgs, poly, stats) => {
-    if (!msgs || msgs.length === 0) return;
-    if (isSignedIn && user) {
-      const id = await upsertRemoteSession(user.uid, msgs, poly, stats, sessionIdRef.current);
-      if (id) sessionIdRef.current = id;
-    } else {
-      const id = upsertLocalSession(msgs, poly, stats, sessionIdRef.current);
-      if (id) sessionIdRef.current = id;
-    }
-  }, [isSignedIn, user]);
+  // ── Auto-save handled by proxy stream endpoint (sessions_full) ────
+  const autoSave = useCallback(async () => {
+    // sessions_full is updated automatically by proxy.js after each stream response
+    // Nothing to do here
+  }, []);
 
   const appendMsg = useCallback((role, content) => {
     setMessages(prev => [...prev, { role, content, time: now() }]);

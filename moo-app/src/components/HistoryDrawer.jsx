@@ -8,8 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { Fonts, Radius, Spacing } from '../constants/tokens';
 import {
-  getLocalSessionList, deleteLocalSession, getLocalSession,
-  getRemoteSessions, getRemoteSession, deleteRemoteSession,
+  getRemoteSessions, getAnonymousSessions, getRemoteSession, deleteRemoteSession,
 } from '../hooks/useSessionStorage';
 import { getRecording, exportRecordingAsHTML } from '../hooks/useRecording';
 import { ReplayModal } from './ReplayModal';
@@ -58,7 +57,8 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
         const remote = await getRemoteSessions(userId);
         setSessions(remote.map(s => ({ ...s, local: false })));
       } else {
-        setSessions(getLocalSessionList());
+        const anon = await getAnonymousSessions();
+        setSessions(anon.map(s => ({ ...s, local: true })));
       }
     } catch (e) {
       console.error('Failed to load sessions:', e);
@@ -73,27 +73,18 @@ export function HistoryDrawer({ visible, onClose, userId, onLoadSession, onNewCh
 
   const handleLoad = useCallback(async (session) => {
     try {
-      let data;
-      if (session.local) {
-        data = getLocalSession(session.id);
-      } else {
-        data = await getRemoteSession(userId, session.id);
-      }
+      const data = await getRemoteSession(session.id);
       if (data) { onLoadSession(data); onClose(); }
     } catch (e) {
       console.error('Failed to load session:', e);
     }
-  }, [userId, onLoadSession, onClose]);
+  }, [onLoadSession, onClose]);
 
   const handleDelete = useCallback(async (e, session) => {
     e?.stopPropagation?.();
     setDeleting(session.id);
     try {
-      if (session.local) {
-        deleteLocalSession(session.id);
-      } else {
-        await deleteRemoteSession(userId, session.id);
-      }
+      await deleteRemoteSession(session.id, userId);
       setSessions(prev => prev.filter(s => s.id !== session.id));
     } catch (e) {
       console.error('Failed to delete:', e);
