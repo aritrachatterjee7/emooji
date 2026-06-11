@@ -47,6 +47,22 @@ const FieldMap = forwardRef(function FieldMap(
   ref
 ) {
   const { colors, strings } = useTheme();
+
+  // ── Override Leaflet.draw tooltip strings when language changes ──
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.L?.drawLocal) return;
+    window.L.drawLocal.draw.handlers.polygon.tooltip = {
+      start:   strings?.clickToPlace   || 'Click to start drawing shape.',
+      cont:    strings?.clickToPlace   || 'Click to continue drawing shape.',
+      end:     strings?.clickFirstPoint || 'Click first point to close this shape.',
+    };
+    window.L.drawLocal.draw.handlers.rectangle.tooltip = {
+      start: strings?.clickDragRect || 'Click and drag to draw a rectangle.',
+    };
+    window.L.drawLocal.draw.handlers.simpleshape.tooltip = {
+      end: strings?.cancel || 'Release mouse to finish drawing.',
+    };
+  }, [strings]);
   const containerRef  = useRef(null);
   const mapRef        = useRef(null);
   const drawnRef      = useRef(null);
@@ -163,6 +179,9 @@ const FieldMap = forwardRef(function FieldMap(
     }
 
     mapRef.current = map;
+
+    // Override Leaflet.draw tooltip strings for multilingual support
+    // This runs on init — language changes handled via useEffect below
     return () => { map.remove(); mapRef.current = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -255,7 +274,7 @@ const FieldMap = forwardRef(function FieldMap(
         <View style={[styles.drawToolbar, { backgroundColor: colors.bgGlass, borderColor: colors.greenBorder }]}>
           <Text style={[styles.drawHint, { color: colors.textMuted }]}>
             {vertexCount < 3
-              ? `Click to place points (${vertexCount} placed, need ${3 - vertexCount} more)`
+              ? `${strings?.clickToPlace || 'Click to place points'} (${vertexCount} ${strings?.placed || 'placed, need'} ${3 - vertexCount} ${strings?.more || 'more'})`
               : `${vertexCount} ${strings?.pointsReady || 'points — ready to finish'}`}
           </Text>
           <View style={styles.drawBtns}>
