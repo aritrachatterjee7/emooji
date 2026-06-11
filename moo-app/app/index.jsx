@@ -1,4 +1,5 @@
 // app/index.jsx
+// build: 20260611201008
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Platform, useWindowDimensions,
@@ -74,27 +75,14 @@ function LocationTipModal({ colors, onClose }) {
       <Text style={[locationStyles.body, { color: colors.textMuted }]}>
         eMooJI needs your location to centre the map on your area and provide accurate satellite analysis for your fields.
       </Text>
-      {/* <View style={[locationStyles.steps, { borderColor: colors.border, backgroundColor: colors.bgSurface }]}>
-        {[
-          '1. Click the 🔒 lock icon in your browser address bar',
-          '2. Go to Site settings → Location',
-          '3. Set Location to Allow',
-          '4. The app will reload automatically ✅',
-        ].map((step, i) => (
-          <View key={i} style={[locationStyles.stepRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-            <Text style={[locationStyles.stepText, { color: colors.textPrimary }]}>{step}</Text>
-          </View>
-        ))}
-      </View> */}
+
       <TouchableOpacity
         style={[locationStyles.btn, { backgroundColor: colors.green }]}
         onPress={onClose}
       >
         <Text style={locationStyles.btnText}>Continue without location</Text>
       </TouchableOpacity>
-      <Text style={[locationStyles.skip, { color: colors.textMuted }]}>
-        You can still use the app — just navigate the map manually
-      </Text>
+
     </View>
   );
 }
