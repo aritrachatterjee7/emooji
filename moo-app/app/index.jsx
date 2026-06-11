@@ -74,7 +74,7 @@ function LocationTipModal({ colors, onClose }) {
       <Text style={[locationStyles.body, { color: colors.textMuted }]}>
         eMooJI needs your location to centre the map on your area and provide accurate satellite analysis for your fields.
       </Text>
-      <View style={[locationStyles.steps, { borderColor: colors.border, backgroundColor: colors.bgSurface }]}>
+      {/* <View style={[locationStyles.steps, { borderColor: colors.border, backgroundColor: colors.bgSurface }]}>
         {[
           '1. Click the 🔒 lock icon in your browser address bar',
           '2. Go to Site settings → Location',
@@ -85,7 +85,7 @@ function LocationTipModal({ colors, onClose }) {
             <Text style={[locationStyles.stepText, { color: colors.textPrimary }]}>{step}</Text>
           </View>
         ))}
-      </View>
+      </View> */}
       <TouchableOpacity
         style={[locationStyles.btn, { backgroundColor: colors.green }]}
         onPress={onClose}
