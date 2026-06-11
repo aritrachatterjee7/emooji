@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Platform, useWindowDimensions,
-  Animated, PanResponder,
+  Animated, PanResponder, TouchableOpacity,
 } from 'react-native';
 import { useJackDaw }          from '../src/hooks/useJackDaw';
 import { TopNav }              from '../src/components/TopNav';
