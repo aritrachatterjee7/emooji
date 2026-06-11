@@ -49,20 +49,20 @@ export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLaye
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
       >
-        <ToolBtn label="Polygon"   icon="△" active={drawMode === 'polygon'}   onPress={onPolygon}   colors={colors} />
-        <ToolBtn label="Rectangle" icon="▭" active={drawMode === 'rectangle'} onPress={onRectangle} colors={colors} />
+        <ToolBtn label={strings?.polygon || 'Polygon'}   icon="△" active={drawMode === 'polygon'}   onPress={onPolygon}   colors={colors} />
+        <ToolBtn label={strings?.rectangle || 'Rectangle'} icon="▭" active={drawMode === 'rectangle'} onPress={onRectangle} colors={colors} />
         {/* Clear only shows danger styling when a field is drawn */}
-        <ToolBtn label="Clear" icon="✕" danger={hasFiel} onPress={onClear} colors={colors} />
+        <ToolBtn label={strings?.clear || 'Clear'} icon="✕" danger={hasFiel} onPress={onClear} colors={colors} />
 
         <View style={[styles.sep, { backgroundColor: colors.borderMid }]} />
 
-        <ToolBtn label="Sat"    icon="◉" active={mapLayer === 'satellite'} onPress={onLayerSat}    colors={colors} />
-        <ToolBtn label="Street" icon="⌂" active={mapLayer === 'street'}   onPress={onLayerStreet} colors={colors} />
+        <ToolBtn label={strings?.sat || 'Sat'}    icon="◉" active={mapLayer === 'satellite'} onPress={onLayerSat}    colors={colors} />
+        <ToolBtn label={strings?.street || 'Street'} icon="⌂" active={mapLayer === 'street'}   onPress={onLayerStreet} colors={colors} />
       </ScrollView>
 
       {!fieldStats && (
         <View style={styles.hint} pointerEvents="none">
-          <Text style={[styles.hintText, { color: colors.textMuted }]}>△ Draw a field to begin</Text>
+          <Text style={[styles.hintText, { color: colors.textMuted }]}>△ {strings?.drawFieldHint || 'Draw a field to begin'}</Text>
         </View>
       )}
     </View>

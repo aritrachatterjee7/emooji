@@ -47,6 +47,11 @@ export const UI_STRINGS = {
     street:         'Street',
     drawFieldHint:  'Draw a field to begin',
     chatSubtitle:   'Draw any field · Ask in plain language or by voice · Real satellite data',
+    clickDragRect:  'Click and drag to draw a rectangle',
+    pointsReady:    'points — ready to finish',
+    finishPolygon:  'Finish Polygon',
+    undoPoint:      'Undo Point',
+    cancel:         'Cancel',
   },
   de: {
     welcome:        'Willkommen bei eMooJI.',
@@ -80,6 +85,11 @@ export const UI_STRINGS = {
     street:         'Straße',
     drawFieldHint:  'Feld zeichnen um zu beginnen',
     chatSubtitle:   'Feld zeichnen · Frage auf Deutsch · Echtzeit-Satellitendaten',
+    clickDragRect:  'Klicken und ziehen um ein Rechteck zu zeichnen',
+    pointsReady:    'Punkte — bereit zum Fertigstellen',
+    finishPolygon:  'Polygon abschließen',
+    undoPoint:      'Punkt rückgängig',
+    cancel:         'Abbrechen',
   },
   es: {
     welcome:        'Bienvenido a eMooJI.',
@@ -113,6 +123,11 @@ export const UI_STRINGS = {
     street:         'Calle',
     drawFieldHint:  'Dibuja un campo para comenzar',
     chatSubtitle:   'Dibuja un campo · Pregunta en español · Datos satelitales reales',
+    clickDragRect:  'Haz clic y arrastra para dibujar un rectángulo',
+    pointsReady:    'puntos — listo para finalizar',
+    finishPolygon:  'Finalizar polígono',
+    undoPoint:      'Deshacer punto',
+    cancel:         'Cancelar',
   },
 };
 

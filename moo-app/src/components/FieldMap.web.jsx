@@ -46,7 +46,7 @@ const FieldMap = forwardRef(function FieldMap(
   { onFieldDrawn, onFieldCleared, mapLayer, drawMode, onDrawModeChange },
   ref
 ) {
-  const { colors } = useTheme();
+  const { colors, strings } = useTheme();
   const containerRef  = useRef(null);
   const mapRef        = useRef(null);
   const drawnRef      = useRef(null);
@@ -256,21 +256,21 @@ const FieldMap = forwardRef(function FieldMap(
           <Text style={[styles.drawHint, { color: colors.textMuted }]}>
             {vertexCount < 3
               ? `Click to place points (${vertexCount} placed, need ${3 - vertexCount} more)`
-              : `${vertexCount} points — ready to finish`}
+              : `${vertexCount} ${strings?.pointsReady || 'points — ready to finish'}`}
           </Text>
           <View style={styles.drawBtns}>
             {vertexCount >= 3 && (
               <TouchableOpacity style={[styles.drawBtn, { backgroundColor: colors.green }]} onPress={handleFinish}>
-                <Text style={styles.drawBtnText}>✓ Finish Polygon</Text>
+                <Text style={styles.drawBtnText}>{`✓ ${strings?.finishPolygon || 'Finish Polygon'}`}</Text>
               </TouchableOpacity>
             )}
             {vertexCount > 0 && (
               <TouchableOpacity style={[styles.drawBtn, { backgroundColor: colors.bgElevated, borderColor: colors.borderMid, borderWidth: 1 }]} onPress={handleUndo}>
-                <Text style={[styles.drawBtnText, { color: colors.textSecondary }]}>↩ Undo Point</Text>
+                <Text style={[styles.drawBtnText, { color: colors.textSecondary }]}>{`↩ ${strings?.undoPoint || 'Undo Point'}`}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={[styles.drawBtn, { backgroundColor: colors.bgElevated, borderColor: colors.danger, borderWidth: 1 }]} onPress={handleCancel}>
-              <Text style={[styles.drawBtnText, { color: colors.danger }]}>✕ Cancel</Text>
+              <Text style={[styles.drawBtnText, { color: colors.danger }]}>{`✕ ${strings?.cancel || 'Cancel'}`}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -278,10 +278,10 @@ const FieldMap = forwardRef(function FieldMap(
 
       {isDrawing && drawMode === 'rectangle' && (
         <View style={[styles.drawToolbar, { backgroundColor: colors.bgGlass, borderColor: colors.greenBorder }]}>
-          <Text style={[styles.drawHint, { color: colors.textMuted }]}>Click and drag to draw a rectangle</Text>
+          <Text style={[styles.drawHint, { color: colors.textMuted }]}>{strings?.clickDragRect || 'Click and drag to draw a rectangle'}</Text>
           <View style={styles.drawBtns}>
             <TouchableOpacity style={[styles.drawBtn, { backgroundColor: colors.bgElevated, borderColor: colors.danger, borderWidth: 1 }]} onPress={handleCancel}>
-              <Text style={[styles.drawBtnText, { color: colors.danger }]}>✕ Cancel</Text>
+              <Text style={[styles.drawBtnText, { color: colors.danger }]}>{`✕ ${strings?.cancel || 'Cancel'}`}</Text>
             </TouchableOpacity>
           </View>
         </View>
