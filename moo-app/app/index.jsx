@@ -66,23 +66,35 @@ function AppSplash({ visible, progress, status }) {
 // ── Location tip modal ────────────────────────────────────────────────────
 function LocationTipModal({ colors, onClose }) {
   return (
-    <View style={locationStyles.overlay} pointerEvents="box-none">
-      <View style={[locationStyles.card, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
-        <Text style={locationStyles.icon}>📍</Text>
-        <Text style={[locationStyles.title, { color: colors.textPrimary }]}>Enable Location</Text>
-        <Text style={[locationStyles.body, { color: colors.textMuted }]}>
-          Allow location access so the map centres on your area automatically — making it faster to draw your field and get satellite analysis.
-        </Text>
-        <Text style={[locationStyles.hint, { color: colors.textMuted }]}>
-          To enable: tap the lock icon in your browser address bar → Site settings → Location → Allow
-        </Text>
-        <TouchableOpacity
-          style={[locationStyles.btn, { backgroundColor: colors.green }]}
-          onPress={onClose}
-        >
-          <Text style={locationStyles.btnText}>Got it</Text>
-        </TouchableOpacity>
+    <View style={[locationStyles.overlay, { backgroundColor: colors.bgBase }]}>
+      <Text style={locationStyles.icon}>📍</Text>
+      <Text style={[locationStyles.title, { color: colors.textPrimary }]}>
+        Location Access Required
+      </Text>
+      <Text style={[locationStyles.body, { color: colors.textMuted }]}>
+        eMooJI needs your location to centre the map on your area and provide accurate satellite analysis for your fields.
+      </Text>
+      <View style={[locationStyles.steps, { borderColor: colors.border, backgroundColor: colors.bgSurface }]}>
+        {[
+          '1. Click the 🔒 lock icon in your browser address bar',
+          '2. Go to Site settings → Location',
+          '3. Set Location to Allow',
+          '4. The app will reload automatically ✅',
+        ].map((step, i) => (
+          <View key={i} style={[locationStyles.stepRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+            <Text style={[locationStyles.stepText, { color: colors.textPrimary }]}>{step}</Text>
+          </View>
+        ))}
       </View>
+      <TouchableOpacity
+        style={[locationStyles.btn, { backgroundColor: colors.green }]}
+        onPress={onClose}
+      >
+        <Text style={locationStyles.btnText}>Continue without location</Text>
+      </TouchableOpacity>
+      <Text style={[locationStyles.skip, { color: colors.textMuted }]}>
+        You can still use the app — just navigate the map manually
+      </Text>
     </View>
   );
 }
@@ -90,33 +102,23 @@ function LocationTipModal({ colors, onClose }) {
 const locationStyles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 500,
+    zIndex: 9999,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    padding: 16,
-    paddingBottom: 40,
+    justifyContent: 'center',
+    padding: 32,
+    gap: 16,
   },
-  card: {
-    width: '100%',
-    maxWidth: 400,
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: 'center',
-    gap: 10,
-    ...Platform.select({
-      web: { boxShadow: '0 8px 32px rgba(0,0,0,0.3)' },
-      ios: { shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
-      android: { elevation: 16 },
-    }),
-  },
-  icon:  { fontSize: 36 },
-  title: { fontFamily: Fonts.displayBold, fontSize: 18, textAlign: 'center' },
-  body:  { fontFamily: Fonts.body, fontSize: 13, textAlign: 'center', lineHeight: 20 },
-  hint:  { fontFamily: Fonts.mono, fontSize: 10, textAlign: 'center', lineHeight: 16, opacity: 0.7 },
-  btn:   { borderRadius: 12, paddingHorizontal: 32, paddingVertical: 12, marginTop: 4 },
-  btnText: { fontFamily: Fonts.displayBold, fontSize: 14, color: '#07090e' },
+  icon:     { fontSize: 56 },
+  title:    { fontFamily: Fonts.displayBold, fontSize: 22, textAlign: 'center' },
+  body:     { fontFamily: Fonts.body, fontSize: 14, textAlign: 'center', lineHeight: 22, maxWidth: 360 },
+  steps:    { width: '100%', maxWidth: 400, borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  stepRow:  { paddingHorizontal: 20, paddingVertical: 14 },
+  stepText: { fontFamily: Fonts.body, fontSize: 13, lineHeight: 20 },
+  btn:      { borderRadius: 14, paddingHorizontal: 32, paddingVertical: 14, marginTop: 8 },
+  btnText:  { fontFamily: Fonts.displayBold, fontSize: 15, color: '#07090e' },
+  skip:     { fontFamily: Fonts.mono, fontSize: 10, textAlign: 'center' },
 });
+
 
 export default function MainScreen() {
   const { width }  = useWindowDimensions();
@@ -238,15 +240,29 @@ export default function MainScreen() {
   // ── Request location permission on app load ───────────────────
   useEffect(() => {
     if (Platform.OS !== 'web' || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      () => {},
-      (err) => {
-        if (err.code === 1) { // PERMISSION_DENIED
-          setTimeout(() => setShowLocationTip(true), 1800);
+
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: 'geolocation' }).then(result => {
+        if (result.state === 'denied') {
+          setTimeout(() => setShowLocationTip(true), 1000);
         }
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
+        // When user grants permission → reload automatically so map can locate
+        result.onchange = () => {
+          if (result.state === 'granted') {
+            window.location.reload();
+          }
+          if (result.state === 'denied') {
+            setShowLocationTip(true);
+          }
+        };
+      }).catch(() => {});
+    } else {
+      navigator.geolocation.getCurrentPosition(
+        () => {},
+        (err) => { if (err.code === 1) setTimeout(() => setShowLocationTip(true), 1000); },
+        { enableHighAccuracy: false, timeout: 5000 }
+      );
+    }
   }, []);
 
   // ── Init ───────────────────────────────────────────────────────
@@ -256,9 +272,31 @@ export default function MainScreen() {
       setSplashStatus(label);
     }).finally(() => {
       setSplashVisible(false);
-      initFullSession(); // init session in DB after app loads
+      initFullSession();
     });
   }, [init, initFullSession]);
+
+  // ── Auto-update: check for new service worker every 60s ────────
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !('serviceWorker' in navigator)) return;
+
+    const checkForUpdate = () => {
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg) reg.update().catch(() => {});
+      }).catch(() => {});
+    };
+
+    // Check immediately and then every 60 seconds
+    checkForUpdate();
+    const interval = setInterval(checkForUpdate, 60000);
+
+    // When a new service worker is waiting, reload automatically
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
+
+    return () => clearInterval(interval);
+  }, []);
 
   // ── Auth state changes ─────────────────────────────────────────
   useEffect(() => {
