@@ -572,10 +572,6 @@ export default function MainScreen() {
         onNewChat={handleClearChat}
       />
 
-      {/* Location permission tip */}
-      {showLocationTip && (
-        <LocationTip onClose={() => setShowLocationTip(false)} colors={colors} />
-      )}
 
       {/* Location tip — shown when user denies location permission */}
       {showLocationTip && (
