@@ -301,7 +301,7 @@ export function ChatPanel({
         </View>
         {!isMobile && (
           <Text style={[styles.sub, { color: colors.textMuted }]}>
-            Draw any field · Ask in plain language or by voice · Real satellite data
+            {strings?.chatSubtitle || 'Draw any field · Ask in plain language or by voice · Real satellite data'}
           </Text>
         )}
       </View>

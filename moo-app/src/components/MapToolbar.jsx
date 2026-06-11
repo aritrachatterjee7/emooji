@@ -37,7 +37,7 @@ function ToolBtn({ label, icon, onPress, active = false, danger = false, colors 
 }
 
 export function MapToolbar({ onPolygon, onRectangle, onClear, onLayerSat, onLayerStreet, mapLayer, drawMode, fieldStats }) {
-  const { colors } = useTheme();
+  const { colors, strings } = useTheme();
 
   // Clear is only red/active when a field has been drawn
   const hasFiel = !!fieldStats;

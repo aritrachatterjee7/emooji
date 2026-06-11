@@ -66,7 +66,7 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
   const { state, label } = connStatus;
 
   const { logout, user } = useAuth() ?? { logout: () => {}, user: null };
-  const { isDark, toggleTheme, colors, fontSize, setFontSize, language, setLanguage } = useTheme() ?? { isDark: false, toggleTheme: () => {}, colors: DarkColors, fontSize: 'medium', setFontSize: () => {}, language: 'en', setLanguage: () => {} };
+  const { isDark, toggleTheme, colors, fontSize, setFontSize, language, setLanguage, strings } = useTheme() ?? { isDark: false, toggleTheme: () => {}, colors: DarkColors, fontSize: 'medium', setFontSize: () => {}, language: 'en', setLanguage: () => {}, strings: {} };
 
   const [installPlatform, setInstallPlatform] = useState(null);
   const [showIOSModal,    setShowIOSModal]    = useState(false);
@@ -145,7 +145,9 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
               <Text style={[
                 styles.badgeLabel,
                 { color: state === 'online' ? colors.green : state === 'connecting' ? colors.warning : colors.danger }
-              ]}>{label}</Text>
+              ]}>
+                {state === 'online' ? (strings?.connected || label) : state === 'connecting' ? (strings?.connecting || label) : (strings?.error || label)}
+              </Text>
             )}
           </View>
 
@@ -227,7 +229,7 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
               activeOpacity={0.85}
             >
               <Text style={styles.installText}>
-                {installPlatform === 'ios' ? '⊕' : 'Install'}
+                {installPlatform === 'ios' ? '⊕' : (strings?.install || 'Install')}
               </Text>
             </TouchableOpacity>
           )}
@@ -239,7 +241,7 @@ export function TopNav({ connStatus, fieldStats, showInstall, onInstall, onSignI
               onPress={onSignIn}
               activeOpacity={0.85}
             >
-              <Text style={styles.signInText}>Sign In</Text>
+              <Text style={styles.signInText}>{strings?.signIn || 'Sign In'}</Text>
             </TouchableOpacity>
           )}
 
