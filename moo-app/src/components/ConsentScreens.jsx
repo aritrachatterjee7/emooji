@@ -208,7 +208,7 @@ function ConsentScreen({ onAgree, onExit, colors, lang, setLang }) {
 }
 
 // ── Screen 2: Location ──────────────────────────────────────────────────────
-function LocationScreen({ onAllow, onSkip, colors, lang }) {
+function LocationScreen({ onAllow, onSkip, colors, lang, locating }) {
   const t = T[lang] || T.en;
   return (
     <View style={[s.overlay, { backgroundColor: colors.bgBase }]}>
@@ -223,10 +223,13 @@ function LocationScreen({ onAllow, onSkip, colors, lang }) {
         <Text style={[s.cardBody, { color: colors.textMuted }]}>{t.locationBody}</Text>
 
         <TouchableOpacity
-          style={[s.btnPrimary, { backgroundColor: colors.green, marginTop: 8 }]}
+          style={[s.btnPrimary, { backgroundColor: locating ? colors.bgOverlay : colors.green, marginTop: 8 }]}
           onPress={onAllow}
+          disabled={locating}
         >
-          <Text style={[s.btnPrimaryText, { color: '#07090e' }]}>{t.locationAllow}</Text>
+          <Text style={[s.btnPrimaryText, { color: locating ? colors.textMuted : '#07090e' }]}>
+            {locating ? '📍 Requesting location…' : t.locationAllow}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -242,8 +245,9 @@ function LocationScreen({ onAllow, onSkip, colors, lang }) {
 
 // ── Main export ─────────────────────────────────────────────────────────────
 export function ConsentFlow({ colors, onComplete }) {
-  const [lang,   setLang]   = useState(getStoredLang());
-  const [screen, setScreen] = useState('consent'); // 'consent' | 'location' | 'done'
+  const [lang,    setLang]    = useState(getStoredLang());
+  const [screen,  setScreen]  = useState('consent'); // 'consent' | 'location' | 'done'
+  const [locating, setLocating] = useState(false);
 
   const handleConsentAgree = () => {
     try { localStorage.setItem(CONSENT_KEY, 'true'); } catch {}
@@ -252,10 +256,24 @@ export function ConsentFlow({ colors, onComplete }) {
 
   const handleLocationAllow = () => {
     if (Platform.OS === 'web' && navigator.geolocation) {
+      setLocating(true);
+      // This triggers the native browser/phone location permission popup
       navigator.geolocation.getCurrentPosition(
-        () => onComplete(lang),
-        () => onComplete(lang),
-        { enableHighAccuracy: true, timeout: 8000 }
+        (position) => {
+          // Permission granted — store coords for FieldMap to use
+          try {
+            localStorage.setItem('emooji_user_lat', position.coords.latitude);
+            localStorage.setItem('emooji_user_lng', position.coords.longitude);
+          } catch {}
+          setLocating(false);
+          onComplete(lang);
+        },
+        (err) => {
+          // Permission denied or error — proceed anyway
+          setLocating(false);
+          onComplete(lang);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     } else {
       onComplete(lang);
@@ -287,6 +305,7 @@ export function ConsentFlow({ colors, onComplete }) {
         onSkip={handleLocationSkip}
         colors={colors}
         lang={lang}
+        locating={locating}
       />
     );
   }

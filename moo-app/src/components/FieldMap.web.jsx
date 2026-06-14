@@ -165,18 +165,16 @@ const FieldMap = forwardRef(function FieldMap(
     });
 
     // ── Auto-locate user on first load ───────────────────────────
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude } = pos.coords;
-          map.setView([latitude, longitude], 15);
-        },
-        () => {
-          // Permission denied or unavailable — keep default center
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-      );
-    }
+    // Use coords stored during consent flow first (instant, no popup needed)
+    try {
+      const lat = localStorage.getItem('emooji_user_lat');
+      const lng = localStorage.getItem('emooji_user_lng');
+      if (lat && lng) {
+        map.setView([parseFloat(lat), parseFloat(lng)], 15);
+        localStorage.removeItem('emooji_user_lat');
+        localStorage.removeItem('emooji_user_lng');
+      }
+    } catch {}
 
     mapRef.current = map;
 
