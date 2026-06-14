@@ -1,5 +1,3 @@
-// app/index.jsx
-// build: 20260611201008
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Platform, useWindowDimensions,
@@ -184,7 +182,6 @@ export default function MainScreen() {
       setSplashStatus(label);
     }).finally(() => {
       setSplashVisible(false);
-      initFullSession();
     });
   }, [init, initFullSession]);
 
@@ -279,6 +276,15 @@ export default function MainScreen() {
 
     if (isSessionActive) startClip(text);
 
+    // ── Lazily create session on first message ─────────────────
+    if (!sessionIdRef.current) {
+      const id = await initRemoteSession(user?.uid || null);
+      if (id) {
+        sessionIdRef.current = id;
+        if (!user?.uid) trackSessionId(id);
+      }
+    }
+
     try {
       const reply = await sendMessage(
         text,
@@ -342,12 +348,12 @@ export default function MainScreen() {
 
   // ── Clear chat ─────────────────────────────────────────────────
   const handleClearChat = useCallback(() => {
+    sessionIdRef.current = null; // reset so next message creates new session
     setMessages([]);
     setUnreadCount(0);
     nudgeShownRef.current = false;
     clearHistory();
-    initFullSession(); // start a fresh session in DB
-  }, [clearHistory, initFullSession]);
+  }, [clearHistory]);
 
   // ── Load session from history ──────────────────────────────────
   const handleLoadSession = useCallback((session) => {
