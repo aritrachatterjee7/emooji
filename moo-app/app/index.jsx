@@ -1,3 +1,5 @@
+// app/index.jsx
+// build: 20260611201008
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Platform, useWindowDimensions,
@@ -81,6 +83,8 @@ export default function MainScreen() {
 
   const fieldMapRef    = useRef(null);
   const sessionIdRef   = useRef(null);
+  const fieldIdRef     = useRef(null);   // current field UUID
+  const fieldsMapRef   = useRef({});     // all fields drawn this session
 
   // ── Generate session ID and init in DB on app start ────────────
   const initFullSession = useCallback(async () => {
@@ -245,12 +249,21 @@ export default function MainScreen() {
 
   // ── Field handlers ─────────────────────────────────────────────
   const handleFieldDrawn = useCallback((poly, stats) => {
+    // Assign a new field ID every time a new polygon is drawn
+    const newFieldId = `field-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    fieldIdRef.current = newFieldId;
+    fieldsMapRef.current[newFieldId] = {
+      geojson:  poly,
+      stats:    stats,
+      drawnAt:  new Date().toISOString(),
+    };
     setPolygon(poly);
     setFieldStats(stats);
     if (isMobile) setUnreadCount(c => c + 1);
   }, [isMobile]);
 
   const handleFieldCleared = useCallback(() => {
+    fieldIdRef.current = null; // clear current field ID
     setPolygon(null);
     setFieldStats(null);
     setDrawMode(null);
@@ -269,7 +282,7 @@ export default function MainScreen() {
 
   // ── Send message ───────────────────────────────────────────────
   const doSend = useCallback(async (text) => {
-    const userMsg = { role: 'user', content: text, time: now() };
+    const userMsg = { role: 'user', content: text, time: now(), field_id: fieldIdRef.current || null };
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setStreamStatus('Thinking…');
@@ -294,8 +307,10 @@ export default function MainScreen() {
         isSignedIn,
         sessionIdRef.current,
         language,
+        fieldIdRef.current,
+        fieldsMapRef.current,
       );
-      const assistantMsg = { role: 'assistant', content: reply, time: now() };
+      const assistantMsg = { role: 'assistant', content: reply, time: now(), field_id: fieldIdRef.current || null };
       setMessages(prev => {
         const updated = [...prev, assistantMsg];
         autoSave(updated, polygonRef.current, fieldStatsRef.current);
@@ -348,7 +363,9 @@ export default function MainScreen() {
 
   // ── Clear chat ─────────────────────────────────────────────────
   const handleClearChat = useCallback(() => {
-    sessionIdRef.current = null; // reset so next message creates new session
+    sessionIdRef.current  = null;
+    fieldIdRef.current    = null;
+    fieldsMapRef.current  = {};
     setMessages([]);
     setUnreadCount(0);
     nudgeShownRef.current = false;

@@ -38,6 +38,7 @@ async function initDB() {
         title            TEXT DEFAULT 'New Chat',
         polygon          JSONB,
         field_stats      JSONB,
+        fields_map       JSONB DEFAULT '{}',
         messages         JSONB DEFAULT '[]',
         created_at       TIMESTAMPTZ DEFAULT NOW(),
         updated_at       TIMESTAMPTZ DEFAULT NOW()
@@ -59,7 +60,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Id, X-Session-Id');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Id, X-Session-Id, X-Field-Id');
   res.setHeader('Cross-Origin-Opener-Policy',   'same-origin-allow-popups');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -243,9 +244,11 @@ app.post('/api/chat/stream', async (req, res) => {
     const question        = lastUserMsg?.content || '';
     const questionTime    = lastUserMsg?.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Session metadata from headers
+    // Session metadata from headers and body
     const clientSessionId = req.headers['x-session-id'] || null;
     const userId          = req.headers['x-user-id']    || null;
+    const fieldId         = req.headers['x-field-id']   || req.body.field_id || null;
+    const fieldsMap       = req.body.fields_map          || null;
     const isAuth          = !!userId;
     const polygon         = req.body.polygon    || null;
     const fieldStats      = req.body.field_stats || null;
@@ -319,18 +322,20 @@ app.post('/api/chat/stream', async (req, res) => {
 
         // ── Build the two new message objects with embedded trace ──
         const userMessage = {
-          role:    'user',
-          content: question,
-          time:    questionTime,
+          role:     'user',
+          content:  question,
+          time:     questionTime,
+          field_id: fieldId || null,
         };
 
         const assistantMessage = {
-          role:          'assistant',
-          content:       finalAnswer,
-          time:          new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          role:           'assistant',
+          content:        finalAnswer,
+          time:           new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          field_id:       fieldId || null,
           thinking_trace: traceEvents,
-          tools_used:    [...toolsUsed],
-          duration_ms:   Date.now() - startTime,
+          tools_used:     [...toolsUsed],
+          duration_ms:    Date.now() - startTime,
         };
 
         // ── Upsert sessions_full ───────────────────────────────────
@@ -353,14 +358,16 @@ app.post('/api/chat/stream', async (req, res) => {
                  SET messages = $1, updated_at = NOW(), title = $2,
                      polygon = COALESCE($3, polygon),
                      field_stats = COALESCE($4, field_stats),
-                     user_id = COALESCE($5, user_id),
-                     is_authenticated = $6
-                 WHERE id = $7`,
+                     fields_map = CASE WHEN $5::jsonb IS NOT NULL THEN $5::jsonb ELSE fields_map END,
+                     user_id = COALESCE($6, user_id),
+                     is_authenticated = $7
+                 WHERE id = $8`,
                 [
                   JSON.stringify(updatedMessages),
                   autoTitle,
-                  polygon     ? JSON.stringify(polygon)    : null,
-                  fieldStats  ? JSON.stringify(fieldStats) : null,
+                  polygon    ? JSON.stringify(polygon)    : null,
+                  fieldStats ? JSON.stringify(fieldStats) : null,
+                  fieldsMap  ? JSON.stringify(fieldsMap)  : null,
                   userId,
                   isAuth,
                   clientSessionId,
@@ -372,8 +379,8 @@ app.post('/api/chat/stream', async (req, res) => {
               const newMessages = [userMessage, assistantMessage];
               const autoTitle   = question.slice(0, 60) || 'New Chat';
               await pool.query(
-                `INSERT INTO sessions_full (id, user_id, is_authenticated, title, polygon, field_stats, messages)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                `INSERT INTO sessions_full (id, user_id, is_authenticated, title, polygon, field_stats, fields_map, messages)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                 [
                   clientSessionId,
                   userId,
@@ -381,6 +388,7 @@ app.post('/api/chat/stream', async (req, res) => {
                   autoTitle,
                   polygon    ? JSON.stringify(polygon)    : null,
                   fieldStats ? JSON.stringify(fieldStats) : null,
+                  fieldsMap  ? JSON.stringify(fieldsMap)  : null,
                   JSON.stringify(newMessages),
                 ]
               );
@@ -515,7 +523,14 @@ app.get('/api/sessions-full/:id/traces', async (req, res) => {
 const PUBLIC_DIR = path.join(__dirname, 'dist');
 app.use(express.static(PUBLIC_DIR, {
   maxAge: '1h',
-  setHeaders: (res, fp) => { if (fp.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache'); },
+  setHeaders: (res, fp) => {
+    // Never cache service worker or entry HTML
+    if (fp.endsWith('sw.js') || fp.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  },
 }));
 
 app.get('*', (req, res) => {

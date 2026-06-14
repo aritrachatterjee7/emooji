@@ -142,6 +142,8 @@ export function useJackDaw() {
     isSignedIn = false,
     fullSessionId = null,
     language = 'en',
+    fieldId = null,
+    fieldsMap = {},
   ) => {
 
     // No system prompt — let JackDaw behave exactly as its native interface
@@ -172,13 +174,19 @@ export function useJackDaw() {
     // Save session_id for conversation continuity
     if (sessionRef.current) payload.session_id = sessionRef.current;
 
+    // Field tracking
+    if (fieldId)   payload.field_id   = fieldId;
+    if (fieldsMap && Object.keys(fieldsMap).length > 0) {
+      payload.fields_map = fieldsMap;
+    }
+
     // ── Try streaming first (works for everyone) ───────────────────────
     try {
       const streamHeaders = { 'Content-Type': 'application/json' };
-      // Use fullSessionId (from sessions_full) for thinking trace storage
-      if (fullSessionId)      streamHeaders['X-Session-Id'] = fullSessionId;
+      if (fullSessionId)           streamHeaders['X-Session-Id'] = fullSessionId;
       else if (sessionRef.current) streamHeaders['X-Session-Id'] = sessionRef.current;
-      if (customerId)         streamHeaders['X-User-Id']    = customerId;
+      if (customerId)              streamHeaders['X-User-Id']    = customerId;
+      if (fieldId)                 streamHeaders['X-Field-Id']   = fieldId;
 
       const res = await fetch(CFG.proxy.streamUrl, {
         method:  'POST',
