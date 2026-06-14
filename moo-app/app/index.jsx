@@ -24,6 +24,7 @@ import {
 import { Fonts, CHAT_WIDTH, DarkColors } from '../src/constants/tokens';
 import { useAuth }             from '../src/context/AuthContext';
 import { useTheme }            from '../src/context/ThemeContext';
+import { ConsentFlow, hasConsent } from '../src/components/ConsentScreens';
 
 const MOBILE_BREAKPOINT = 860;
 
@@ -64,48 +65,6 @@ function AppSplash({ visible, progress, status }) {
   );
 }
 
-// ── Location tip modal ────────────────────────────────────────────────────
-function LocationTipModal({ colors, onClose }) {
-  return (
-    <View style={[locationStyles.overlay, { backgroundColor: colors.bgBase }]}>
-      <Text style={locationStyles.icon}>📍</Text>
-      <Text style={[locationStyles.title, { color: colors.textPrimary }]}>
-        Location Access Required
-      </Text>
-      <Text style={[locationStyles.body, { color: colors.textMuted }]}>
-        eMooJI needs your location to centre the map on your area and provide accurate satellite analysis for your fields.
-      </Text>
-
-      <TouchableOpacity
-        style={[locationStyles.btn, { backgroundColor: colors.green }]}
-        onPress={onClose}
-      >
-        <Text style={locationStyles.btnText}>Continue without location</Text>
-      </TouchableOpacity>
-
-    </View>
-  );
-}
-
-const locationStyles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 9999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    gap: 16,
-  },
-  icon:     { fontSize: 56 },
-  title:    { fontFamily: Fonts.displayBold, fontSize: 22, textAlign: 'center' },
-  body:     { fontFamily: Fonts.body, fontSize: 14, textAlign: 'center', lineHeight: 22, maxWidth: 360 },
-  steps:    { width: '100%', maxWidth: 400, borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
-  stepRow:  { paddingHorizontal: 20, paddingVertical: 14 },
-  stepText: { fontFamily: Fonts.body, fontSize: 13, lineHeight: 20 },
-  btn:      { borderRadius: 14, paddingHorizontal: 32, paddingVertical: 14, marginTop: 8 },
-  btnText:  { fontFamily: Fonts.displayBold, fontSize: 15, color: '#07090e' },
-  skip:     { fontFamily: Fonts.mono, fontSize: 10, textAlign: 'center' },
-});
 
 
 export default function MainScreen() {
@@ -143,6 +102,7 @@ export default function MainScreen() {
   const fieldStatsRef  = useRef(null);
 
   // ── Splash ─────────────────────────────────────────────────────
+  const [consentDone,    setConsentDone]    = useState(hasConsent());
   const [splashVisible,  setSplashVisible]  = useState(true);
   const [splashProgress, setSplashProgress] = useState(0);
   const [splashStatus,   setSplashStatus]   = useState('Initialising…');
@@ -162,7 +122,6 @@ export default function MainScreen() {
 
   // ── Modals & Drawers ───────────────────────────────────────────
   const [showNudge,      setShowNudge]      = useState(false);
-  const [showLocationTip, setShowLocationTip] = useState(false);
   const [showHistory,    setShowHistory]    = useState(false);
   const [showRecordings, setShowRecordings] = useState(false);
   const nudgeShownRef = useRef(false);
@@ -209,48 +168,13 @@ export default function MainScreen() {
   useEffect(() => { polygonRef.current   = polygon;    }, [polygon]);
   useEffect(() => { fieldStatsRef.current = fieldStats; }, [fieldStats]);
 
-  // ── Request location permission on first load ─────────────────
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      () => {}, // success — map already handles centering
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          // Show tip after splash is gone
-          setTimeout(() => setShowLocationTip(true), 1500);
-        }
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
-    );
-  }, []);
 
-  // ── Request location permission on app load ───────────────────
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !navigator.geolocation) return;
 
-    if (navigator.permissions) {
-      navigator.permissions.query({ name: 'geolocation' }).then(result => {
-        if (result.state === 'denied') {
-          setTimeout(() => setShowLocationTip(true), 1000);
-        }
-        // When user grants permission → reload automatically so map can locate
-        result.onchange = () => {
-          if (result.state === 'granted') {
-            window.location.reload();
-          }
-          if (result.state === 'denied') {
-            setShowLocationTip(true);
-          }
-        };
-      }).catch(() => {});
-    } else {
-      navigator.geolocation.getCurrentPosition(
-        () => {},
-        (err) => { if (err.code === 1) setTimeout(() => setShowLocationTip(true), 1000); },
-        { enableHighAccuracy: false, timeout: 5000 }
-      );
-    }
+  // ── Handle consent + language selection complete ──────────────
+  const handleConsentComplete = useCallback((selectedLang) => {
+    // Save language choice
+    try { localStorage.setItem('emooji_language', selectedLang); } catch {}
+    setConsentDone(true);
   }, []);
 
   // ── Init ───────────────────────────────────────────────────────
@@ -561,14 +485,6 @@ export default function MainScreen() {
       />
 
 
-      {/* Location tip — shown when user denies location permission */}
-      {showLocationTip && (
-        <LocationTipModal
-          colors={colors}
-          onClose={() => setShowLocationTip(false)}
-        />
-      )}
-
       <NudgeModal
         visible={showNudge}
         onClose={() => setShowNudge(false)}
@@ -579,6 +495,14 @@ export default function MainScreen() {
         progress={splashProgress}
         status={splashStatus}
       />
+
+      {/* Consent flow — shown before app on first visit */}
+      {!consentDone && (
+        <ConsentFlow
+          colors={colors}
+          onComplete={handleConsentComplete}
+        />
+      )}
     </View>
   );
 }
