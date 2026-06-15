@@ -86,19 +86,7 @@ export default function MainScreen() {
   const fieldIdRef     = useRef(null);   // current field UUID
   const fieldsMapRef   = useRef({});     // all fields drawn this session
 
-  // ── Generate session ID and init in DB on app start ────────────
-  const initFullSession = useCallback(async () => {
-    try {
-      const id = await initRemoteSession(user?.uid || null);
-      if (id) {
-        sessionIdRef.current = id;
-        if (!user?.uid) trackSessionId(id); // track for anonymous users
-        console.log('Session initialized:', id);
-      }
-    } catch (e) {
-      console.error('Session init failed:', e);
-    }
-  }, [user]);
+  // Session created lazily on first message send (see doSend)
   const messagesRef    = useRef([]);
   const polygonRef     = useRef(null);
   const fieldStatsRef  = useRef(null);
@@ -174,7 +162,6 @@ export default function MainScreen() {
 
   // ── Handle consent + language selection complete ──────────────
   const handleConsentComplete = useCallback((selectedLang) => {
-    // Save language choice
     try { localStorage.setItem('emooji_language', selectedLang); } catch {}
     setConsentDone(true);
   }, []);
@@ -187,7 +174,7 @@ export default function MainScreen() {
     }).finally(() => {
       setSplashVisible(false);
     });
-  }, [init, initFullSession]);
+  }, [init]);
 
   // ── Auto-update: check for new service worker every 60s ────────
   useEffect(() => {
@@ -309,6 +296,7 @@ export default function MainScreen() {
         language,
         fieldIdRef.current,
         fieldsMapRef.current,
+        fieldStatsRef.current,
       );
       const assistantMsg = { role: 'assistant', content: reply, time: now(), field_id: fieldIdRef.current || null };
       setMessages(prev => {

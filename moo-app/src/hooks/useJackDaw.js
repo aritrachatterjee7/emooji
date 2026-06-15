@@ -144,6 +144,7 @@ export function useJackDaw() {
     language = 'en',
     fieldId = null,
     fieldsMap = {},
+    fieldStats = null,
   ) => {
 
     // No system prompt — let JackDaw behave exactly as its native interface
@@ -176,6 +177,7 @@ export function useJackDaw() {
 
     // Field tracking
     if (fieldId)   payload.field_id   = fieldId;
+    if (fieldStats) payload.field_stats = fieldStats;
     if (fieldsMap && Object.keys(fieldsMap).length > 0) {
       payload.fields_map = fieldsMap;
     }

@@ -45,6 +45,8 @@ async function initDB() {
       );
       CREATE INDEX IF NOT EXISTS idx_sessions_full_user_id ON sessions_full(user_id);
     `);
+    // Clean up empty sessions on startup
+    await client.query(`DELETE FROM sessions_full WHERE jsonb_array_length(messages) = 0`);
     console.log('✅ DB tables ready');
   } catch (err) {
     console.error('DB init error:', err.message);
