@@ -360,7 +360,7 @@ app.post('/api/chat/stream', async (req, res) => {
                  SET messages = $1, updated_at = NOW(), title = $2,
                      polygon = COALESCE($3, polygon),
                      field_stats = COALESCE($4, field_stats),
-                     fields_map = CASE WHEN $5::jsonb IS NOT NULL THEN $5::jsonb ELSE fields_map END,
+                     fields_map = CASE WHEN $5::jsonb IS NOT NULL THEN fields_map || $5::jsonb ELSE fields_map END,
                      user_id = COALESCE($6, user_id),
                      is_authenticated = $7
                  WHERE id = $8`,
