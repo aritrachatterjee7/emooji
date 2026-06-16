@@ -251,6 +251,7 @@ app.post('/api/chat/stream', async (req, res) => {
     const userId          = req.headers['x-user-id']    || null;
     const fieldId         = req.headers['x-field-id']   || req.body.field_id || null;
     const fieldsMap       = req.body.fields_map          || null;
+    console.log('field_id:', fieldId, '| fields_map keys:', fieldsMap ? Object.keys(fieldsMap) : 'null');
     const isAuth          = !!userId;
     const polygon         = req.body.polygon    || null;
     const fieldStats      = req.body.field_stats || null;
